@@ -45,5 +45,11 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>ReceiptOnce needs camera access to scan receipts.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>ReceiptOnce needs photo access to import receipt images.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>ReceiptOnce saves captured receipts to your photo library if you choose.</string>
 </dict>
 </plist>

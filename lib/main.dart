@@ -1,6 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 void main() {
   runApp(const ReceiptOnceApp());
@@ -85,83 +90,92 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       body: SafeArea(
         bottom: false,
-        child: Stack(
-          children: [
-            Container(
-              height: 180,
-              color: _headerGreen,
-            ),
-            SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'ReceiptOnce',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 26,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.2,
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  const _SummaryCard(),
-                  const SizedBox(height: 20),
-                  _SearchBar(
-                    controller: _searchController,
-                    focusNode: _searchFocus,
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      const Text(
-                        'Recent Receipts',
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              Container(
+                width: double.infinity,
+                color: _headerGreen,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text(
+                        'ReceiptOnce',
                         style: TextStyle(
-                          fontSize: 20,
+                          color: Colors.white,
+                          fontSize: 26,
                           fontWeight: FontWeight.w700,
-                          color: _darkText,
+                          letterSpacing: 0.2,
                         ),
                       ),
-                      const Spacer(),
-                      GestureDetector(
-                        onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const ReceiptsHubPage(),
-                            ),
-                          );
-                        },
-                        child: Container(
-                          width: 32,
-                          height: 32,
-                          decoration: BoxDecoration(
-                            color: _headerGreen,
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.18),
-                                blurRadius: 8,
-                                offset: const Offset(0, 3),
-                              ),
-                            ],
-                          ),
-                          child: const Icon(
-                            Icons.arrow_forward,
-                            color: Colors.white,
-                            size: 18,
-                          ),
-                        ),
-                      ),
+                      SizedBox(height: 18),
+                      _SummaryCard(),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  ...receiptItems.map((item) => _ReceiptListItem(item: item)),
-                  const SizedBox(height: 90),
-                ],
+                ),
               ),
-            ),
-          ],
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _SearchBar(
+                      controller: _searchController,
+                      focusNode: _searchFocus,
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        const Text(
+                          'Recent Receipts',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                            color: _darkText,
+                          ),
+                        ),
+                        const Spacer(),
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const ReceiptsHubPage(),
+                              ),
+                            );
+                          },
+                          child: Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: _headerGreen,
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.18),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                            child: const Icon(
+                              Icons.arrow_forward,
+                              color: Colors.white,
+                              size: 18,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    ...receiptItems.map((item) => _ReceiptListItem(item: item)),
+                    const SizedBox(height: 90),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
       bottomNavigationBar: SafeArea(
@@ -534,46 +548,45 @@ class _ReceiptListItem extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Text(
-                      item.date,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: _mutedText,
-                      ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8E8E8),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    item.category,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF5F5F5F),
+                      fontWeight: FontWeight.w600,
                     ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE8E8E8),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        item.category,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF5F5F5F),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  item.date,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: _mutedText,
+                  ),
                 ),
               ],
             ),
           ),
           const SizedBox(width: 12),
-          Text(
-            item.amount,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF45A146),
+          Flexible(
+            child: Text(
+              item.amount,
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF45A146),
+              ),
             ),
           ),
         ],
@@ -637,15 +650,22 @@ class CameraCapturePage extends StatefulWidget {
 
 class _CameraCapturePageState extends State<CameraCapturePage> {
   static bool _hasShownExplainer = false;
-  final MockOcrService _ocrService = MockOcrService();
+  final OcrService _ocrService = OcrService();
+  final ImagePicker _imagePicker = ImagePicker();
+  CameraController? _cameraController;
+  XFile? _selectedImage;
   Timer? _slowTimer;
   bool _isProcessing = false;
   bool _showSlowNotice = false;
   bool _cameraReady = false;
+  bool _cameraInitFailed = false;
+  bool _showingTips = false;
 
   @override
   void dispose() {
     _slowTimer?.cancel();
+    _cameraController?.dispose();
+    _ocrService.dispose();
     super.dispose();
   }
 
@@ -658,21 +678,7 @@ class _CameraCapturePageState extends State<CameraCapturePage> {
   Future<void> _startFlow() async {
     if (!_hasShownExplainer) {
       _hasShownExplainer = true;
-      await showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Scan receipts automatically'),
-          content: const Text(
-            "Next, we'll open your camera so you can snap the receipt.",
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Continue'),
-            ),
-          ],
-        ),
-      );
+      await _showTipsDialog();
     }
 
     final granted = await _requestCameraPermission();
@@ -687,17 +693,145 @@ class _CameraCapturePageState extends State<CameraCapturePage> {
       );
       return;
     }
-    setState(() {
-      _cameraReady = true;
-    });
+    await _initializeCamera();
   }
 
   Future<bool> _requestCameraPermission() async {
-    await Future.delayed(const Duration(milliseconds: 250));
-    return true;
+    final status = await Permission.camera.request();
+    return status.isGranted;
+  }
+
+  Future<bool> _requestGalleryPermission() async {
+    final photosStatus = await Permission.photos.request();
+    if (photosStatus.isGranted) return true;
+    final storageStatus = await Permission.storage.request();
+    return storageStatus.isGranted;
+  }
+
+  Future<void> _initializeCamera() async {
+    try {
+      final cameras = await availableCameras();
+      if (cameras.isEmpty) {
+        if (mounted) {
+          setState(() {
+            _cameraReady = false;
+            _cameraInitFailed = true;
+          });
+        }
+        return;
+      }
+      final camera = cameras.firstWhere(
+        (camera) => camera.lensDirection == CameraLensDirection.back,
+        orElse: () => cameras.first,
+      );
+      final controller = CameraController(
+        camera,
+        ResolutionPreset.high,
+        enableAudio: false,
+      );
+      await controller.initialize();
+      if (!mounted) return;
+      setState(() {
+        _cameraController = controller;
+        _cameraReady = true;
+        _cameraInitFailed = false;
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _cameraReady = false;
+          _cameraInitFailed = true;
+        });
+      }
+    }
+  }
+
+  Future<void> _showTipsDialog() async {
+    if (_showingTips) return;
+    setState(() {
+      _showingTips = true;
+    });
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Scan receipts automatically',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: _darkText,
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                "Next, we'll open your camera. For best results:",
+                style: TextStyle(color: _mutedText),
+              ),
+              const SizedBox(height: 12),
+              _TipRow(
+                icon: Icons.light_mode,
+                text: 'Use good lighting and avoid glare.',
+              ),
+              const SizedBox(height: 8),
+              _TipRow(
+                icon: Icons.crop,
+                text: 'Fit the full receipt in the frame.',
+              ),
+              const SizedBox(height: 8),
+              _TipRow(
+                icon: Icons.contrast,
+                text: 'Keep text sharp with high contrast.',
+              ),
+              const SizedBox(height: 8),
+              _TipRow(
+                icon: Icons.photo_library,
+                text: 'Import a photo from your gallery anytime.',
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Prefer manual entry? Tap “Enter manually” below.',
+                style: TextStyle(color: _mutedText),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _headerGreen,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    'Continue',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (mounted) {
+      setState(() {
+        _showingTips = false;
+      });
+    }
   }
 
   Future<void> _handleUsePhoto() async {
+    if (_selectedImage == null) return;
     setState(() {
       _isProcessing = true;
       _showSlowNotice = false;
@@ -711,17 +845,88 @@ class _CameraCapturePageState extends State<CameraCapturePage> {
       }
     });
 
-    final result = await _ocrService.readReceipt();
-    _slowTimer?.cancel();
-    if (!mounted) return;
-    setState(() {
-      _isProcessing = false;
-    });
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ReceiptEditorPage(
-          draft: ReceiptDraft.fromOcr(result),
+    try {
+      final result = await _ocrService.readReceipt(_selectedImage!.path);
+      _slowTimer?.cancel();
+      if (!mounted) return;
+      setState(() {
+        _isProcessing = false;
+      });
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ReceiptEditorPage(
+            draft: ReceiptDraft.fromOcr(result),
+          ),
         ),
+      );
+    } catch (_) {
+      _slowTimer?.cancel();
+      if (!mounted) return;
+      setState(() {
+        _isProcessing = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not read this receipt.')),
+      );
+    }
+  }
+
+  Future<void> _handleCapture() async {
+    if (_cameraController == null || !_cameraReady) return;
+    try {
+      final file = await _cameraController!.takePicture();
+      if (!mounted) return;
+      setState(() {
+        _selectedImage = file;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _handleImportPhoto() async {
+    final granted = await _requestGalleryPermission();
+    if (!mounted) return;
+    if (!granted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Allow photo access to import images.')),
+      );
+      return;
+    }
+    final file = await _imagePicker.pickImage(source: ImageSource.gallery);
+    if (!mounted) return;
+    if (file == null) return;
+    setState(() {
+      _selectedImage = file;
+    });
+  }
+
+  Widget _buildPreview() {
+    if (_selectedImage != null) {
+      return Image.file(
+        File(_selectedImage!.path),
+        fit: BoxFit.cover,
+      );
+    }
+    if (_cameraController?.value.isInitialized ?? false) {
+      final controller = _cameraController!;
+      return Center(
+        child: AspectRatio(
+          aspectRatio: controller.value.aspectRatio,
+          child: CameraPreview(controller),
+        ),
+      );
+    }
+    if (_cameraInitFailed) {
+      return const Center(
+        child: Text(
+          'Camera unavailable',
+          style: TextStyle(color: Colors.white70),
+        ),
+      );
+    }
+    return const Center(
+      child: Text(
+        'Opening camera...',
+        style: TextStyle(color: Colors.white70),
       ),
     );
   }
@@ -735,6 +940,13 @@ class _CameraCapturePageState extends State<CameraCapturePage> {
         foregroundColor: Colors.white,
         elevation: 0,
         title: const Text('Scan receipt'),
+        actions: [
+          IconButton(
+            tooltip: 'Tips',
+            onPressed: _showTipsDialog,
+            icon: const Icon(Icons.help_outline),
+          ),
+        ],
       ),
       body: Stack(
         children: [
@@ -749,13 +961,9 @@ class _CameraCapturePageState extends State<CameraCapturePage> {
                     borderRadius: BorderRadius.circular(18),
                     border: Border.all(color: Colors.white24),
                   ),
-                  child: Center(
-                    child: Text(
-                      _cameraReady
-                          ? 'Camera preview'
-                          : 'Opening camera...',
-                      style: const TextStyle(color: Colors.white70),
-                    ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(18),
+                    child: _buildPreview(),
                   ),
                 ),
               ),
@@ -766,7 +974,9 @@ class _CameraCapturePageState extends State<CameraCapturePage> {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
-                        onPressed: _cameraReady ? _handleUsePhoto : null,
+                        onPressed: _selectedImage == null
+                            ? (_cameraReady ? _handleCapture : null)
+                            : _handleUsePhoto,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: _headerGreen,
                           padding: const EdgeInsets.symmetric(vertical: 14),
@@ -774,26 +984,80 @@ class _CameraCapturePageState extends State<CameraCapturePage> {
                             borderRadius: BorderRadius.circular(14),
                           ),
                         ),
-                        child: const Text(
-                          'Use this photo',
-                          style: TextStyle(color: Colors.white),
+                        child: Text(
+                          _selectedImage == null
+                              ? 'Capture receipt'
+                              : 'Use this photo',
+                          style: const TextStyle(color: Colors.white),
                         ),
                       ),
                     ),
                     const SizedBox(height: 10),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.of(context).pushReplacement(
-                          MaterialPageRoute(
-                            builder: (_) => const ManualEntryPage(),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        onPressed: _selectedImage == null
+                            ? _handleImportPhoto
+                            : () {
+                                setState(() {
+                                  _selectedImage = null;
+                                });
+                              },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: const BorderSide(color: Colors.white54),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
                           ),
-                        );
-                      },
-                      child: const Text(
-                        'Enter manually',
-                        style: TextStyle(color: Colors.white70),
+                        ),
+                        child: Text(
+                          _selectedImage == null ? 'Import photo' : 'Retake',
+                        ),
                       ),
                     ),
+                    const SizedBox(height: 6),
+                    if (_selectedImage == null)
+                      TextButton(
+                        onPressed: () {
+                          Navigator.of(context).pushReplacement(
+                            MaterialPageRoute(
+                              builder: (_) => const ManualEntryPage(),
+                            ),
+                          );
+                        },
+                        child: const Text(
+                          'Enter manually',
+                          style: TextStyle(color: Colors.white70),
+                        ),
+                      )
+                    else
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          TextButton(
+                            onPressed: _handleImportPhoto,
+                            child: const Text(
+                              'Import another',
+                              style: TextStyle(color: Colors.white70),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          TextButton(
+                            onPressed: () {
+                              Navigator.of(context).pushReplacement(
+                                MaterialPageRoute(
+                                  builder: (_) => const ManualEntryPage(),
+                                ),
+                              );
+                            },
+                            child: const Text(
+                              'Enter manually',
+                              style: TextStyle(color: Colors.white70),
+                            ),
+                          ),
+                        ],
+                      ),
                   ],
                 ),
               ),
@@ -904,11 +1168,19 @@ class _ReceiptEditorPageState extends State<ReceiptEditorPage> {
                   ),
                 ],
               ),
-              child: const Center(
-                child: Text(
-                  'Receipt photo',
-                  style: TextStyle(color: _mutedText),
-                ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: widget.draft.imagePath.isNotEmpty
+                    ? Image.file(
+                        File(widget.draft.imagePath),
+                        fit: BoxFit.cover,
+                      )
+                    : const Center(
+                        child: Text(
+                          'Receipt photo',
+                          style: TextStyle(color: _mutedText),
+                        ),
+                      ),
               ),
             ),
             const SizedBox(height: 16),
@@ -1042,11 +1314,7 @@ class _ManualEntryPageState extends State<ManualEntryPage> {
                     ),
                     TextButton(
                       onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Open settings'),
-                          ),
-                        );
+                        openAppSettings();
                       },
                       child: const Text('Settings'),
                     ),
@@ -1140,12 +1408,42 @@ class _InputField extends StatelessWidget {
   }
 }
 
+class _TipRow extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _TipRow({
+    required this.icon,
+    required this.text,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, color: _headerGreen, size: 18),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              color: _mutedText,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class ReceiptDraft {
   final String merchant;
   final String total;
   final String date;
   final String category;
   final String rawText;
+  final String imagePath;
   final double confidence;
 
   const ReceiptDraft({
@@ -1154,6 +1452,7 @@ class ReceiptDraft {
     required this.date,
     required this.category,
     required this.rawText,
+    required this.imagePath,
     required this.confidence,
   });
 
@@ -1165,6 +1464,7 @@ class ReceiptDraft {
         date: '',
         category: '',
         rawText: result.rawText,
+        imagePath: result.imagePath,
         confidence: result.confidence,
       );
     }
@@ -1174,6 +1474,7 @@ class ReceiptDraft {
       date: result.date,
       category: result.category,
       rawText: result.rawText,
+      imagePath: result.imagePath,
       confidence: result.confidence,
     );
   }
@@ -1185,6 +1486,7 @@ class OcrResult {
   final String date;
   final String category;
   final String rawText;
+  final String imagePath;
   final double confidence;
 
   const OcrResult({
@@ -1193,20 +1495,148 @@ class OcrResult {
     required this.date,
     required this.category,
     required this.rawText,
+    required this.imagePath,
     required this.confidence,
   });
 }
 
-class MockOcrService {
-  Future<OcrResult> readReceipt() async {
-    await Future.delayed(const Duration(seconds: 2));
-    return const OcrResult(
-      merchant: 'Whole Foods Market',
-      total: '\$87.43',
-      date: 'Jan 17, 2026',
-      category: 'Food',
-      rawText: 'TOTAL 87.43\nWHOLE FOODS MARKET\nJan 17 2026',
-      confidence: 0.45,
+class OcrService {
+  final TextRecognizer _recognizer = TextRecognizer();
+
+  Future<OcrResult> readReceipt(String imagePath) async {
+    final inputImage = InputImage.fromFilePath(imagePath);
+    final recognizedText = await _recognizer.processImage(inputImage);
+    final rawText = recognizedText.text;
+    return _parseReceipt(rawText, imagePath);
+  }
+
+  void dispose() {
+    _recognizer.close();
+  }
+
+  OcrResult _parseReceipt(String rawText, String imagePath) {
+    final lines = rawText
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList();
+    final merchant = _guessMerchant(lines);
+    final total = _guessTotal(lines);
+    final date = _guessDate(lines);
+    final category = _guessCategory(merchant);
+    final confidence = _estimateConfidence(rawText);
+    return OcrResult(
+      merchant: merchant,
+      total: total,
+      date: date,
+      category: category,
+      rawText: rawText,
+      imagePath: imagePath,
+      confidence: confidence,
     );
+  }
+
+  String _guessMerchant(List<String> lines) {
+    for (final line in lines.take(6)) {
+      final upper = line.toUpperCase();
+      if (upper.contains('TOTAL') ||
+          upper.contains('BALANCE') ||
+          upper.contains('SUBTOTAL')) {
+        continue;
+      }
+      if (RegExp(r'[A-Za-z]').hasMatch(line)) {
+        return _normalizeMerchant(line);
+      }
+    }
+    return lines.isNotEmpty ? _normalizeMerchant(lines.first) : '';
+  }
+
+  String _normalizeMerchant(String value) {
+    return value.replaceAll(RegExp(r'\s{2,}'), ' ').trim();
+  }
+
+  String _guessTotal(List<String> lines) {
+    const keywords = [
+      'TOTAL',
+      'BALANCE DUE',
+      'AMOUNT DUE',
+      'GRAND TOTAL',
+      'TOTAL DUE',
+    ];
+    double? bestMatch;
+    for (final line in lines) {
+      final upper = line.toUpperCase();
+      if (keywords.any((keyword) => upper.contains(keyword))) {
+        final amounts = _extractAmounts(line);
+        if (amounts.isNotEmpty) {
+          final candidate = amounts.reduce(_maxDouble);
+          bestMatch = bestMatch == null ? candidate : _maxDouble(bestMatch, candidate);
+        }
+      }
+    }
+    bestMatch ??= _extractAmounts(lines.join(' ')).fold<double?>(
+      null,
+      (current, value) => current == null ? value : _maxDouble(current, value),
+    );
+    if (bestMatch == null) return '';
+    return '\$${bestMatch.toStringAsFixed(2)}';
+  }
+
+  List<double> _extractAmounts(String text) {
+    final matches = RegExp(r'(\$?\d{1,3}(?:[,\d]{0,})\.\d{2})')
+        .allMatches(text);
+    return matches
+        .map((match) => match.group(1) ?? '')
+        .map((value) => value.replaceAll('\$', '').replaceAll(',', ''))
+        .map(double.tryParse)
+        .whereType<double>()
+        .toList();
+  }
+
+  double _maxDouble(double a, double b) => a > b ? a : b;
+
+  String _guessDate(List<String> lines) {
+    final monthPattern =
+        RegExp(r'(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)');
+    for (final line in lines) {
+      if (monthPattern.hasMatch(line.toUpperCase())) {
+        return line;
+      }
+      final match = RegExp(r'\d{1,2}[/-]\d{1,2}[/-]\d{2,4}').firstMatch(line);
+      if (match != null) {
+        return match.group(0) ?? '';
+      }
+    }
+    return '';
+  }
+
+  String _guessCategory(String merchant) {
+    final value = merchant.toLowerCase();
+    if (value.contains('whole foods') ||
+        value.contains('market') ||
+        value.contains('restaurant') ||
+        value.contains('cafe')) {
+      return 'Food';
+    }
+    if (value.contains('shell') ||
+        value.contains('gas') ||
+        value.contains('fuel') ||
+        value.contains('uber') ||
+        value.contains('lyft')) {
+      return 'Transport';
+    }
+    if (value.contains('amazon') ||
+        value.contains('store') ||
+        value.contains('shop')) {
+      return 'Shopping';
+    }
+    return 'Other';
+  }
+
+  double _estimateConfidence(String rawText) {
+    final length = rawText.replaceAll(RegExp(r'\s+'), '').length;
+    if (length < 30) return 0.15;
+    if (length < 60) return 0.4;
+    return 0.7;
   }
 }
