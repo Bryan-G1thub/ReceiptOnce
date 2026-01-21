@@ -5,6 +5,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -286,9 +287,19 @@ class _HomeScreenState extends State<HomeScreen> {
                         _searchFocus.unfocus();
                       },
                     ),
-                    const _NavItem(
+                    _NavItem(
                       icon: Icons.menu,
                       label: 'Menu',
+                      onTap: () async {
+                        FocusScope.of(context).unfocus();
+                        await Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const MenuPage(),
+                          ),
+                        );
+                        await _loadHomeData();
+                        _searchFocus.unfocus();
+                      },
                     ),
                   ],
                 ),
@@ -557,7 +568,7 @@ class _ReceiptsSearchField extends StatelessWidget {
         controller: controller,
         decoration: InputDecoration(
           border: InputBorder.none,
-          hintText: 'Search by merchant, category, or date',
+          hintText: 'Search by merchant, category, date, or amount',
           hintStyle: TextStyle(color: _mutedText),
           icon: Icon(Icons.search, color: _headerGreen),
         ),
@@ -800,8 +811,14 @@ class _PaywallFeatureRow extends StatelessWidget {
 
 class _ReceiptCard extends StatelessWidget {
   final Receipt receipt;
+  final VoidCallback? onTap;
+  final VoidCallback? onAction;
 
-  const _ReceiptCard({required this.receipt});
+  const _ReceiptCard({
+    required this.receipt,
+    this.onTap,
+    this.onAction,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -810,96 +827,111 @@ class _ReceiptCard extends StatelessWidget {
     final hasImage =
         receipt.imagePath.isNotEmpty && File(receipt.imagePath).existsSync();
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE6E6E6)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(14),
-            child: Container(
-              width: 64,
-              height: 64,
-              color: const Color(0xFFE7EFEA),
-              child: hasImage
-                  ? Image.file(
-                      File(receipt.imagePath),
-                      fit: BoxFit.cover,
-                    )
-                  : const Icon(
-                      Icons.receipt_long,
-                      color: _headerGreen,
-                      size: 30,
-                    ),
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE6E6E6)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
             ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  receipt.merchant.isEmpty ? 'Untitled receipt' : receipt.merchant,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: _darkText,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE8E8E8),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    receipt.category.isEmpty ? 'Other' : receipt.category,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF5F5F5F),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  dateText.isEmpty ? 'Date not set' : dateText,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: _mutedText,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          SizedBox(
-            width: 96,
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: Text(
-                amountText,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF45A146),
-                ),
+          ],
+        ),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                width: 64,
+                height: 64,
+                color: const Color(0xFFE7EFEA),
+                child: hasImage
+                    ? Image.file(
+                        File(receipt.imagePath),
+                        fit: BoxFit.cover,
+                      )
+                    : const Icon(
+                        Icons.receipt_long,
+                        color: _headerGreen,
+                        size: 30,
+                      ),
               ),
             ),
-          ),
-        ],
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    receipt.merchant.isEmpty
+                        ? 'Untitled receipt'
+                        : receipt.merchant,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: _darkText,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8E8E8),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      receipt.category.isEmpty ? 'Other' : receipt.category,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF5F5F5F),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    dateText.isEmpty ? 'Date not set' : dateText,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: _mutedText,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            SizedBox(
+              width: 96,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    amountText,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF45A146),
+                    ),
+                  ),
+                  if (onAction != null) ...[
+                    const SizedBox(height: 6),
+                    _IconButton(
+                      icon: Icons.more_vert,
+                      onTap: onAction!,
+                      iconColor: _mutedText,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1234,11 +1266,11 @@ class _ReceiptsHubPageState extends State<ReceiptsHubPage> {
   ];
   String _activeCategory = 'All';
   String _activeSort = 'Newest';
-  List<Receipt> _receipts = [];
   List<Receipt> _visibleReceipts = [];
   bool _loading = true;
   bool _isPro = false;
   int _scansLeft = 10;
+  int _searchRequest = 0;
 
   @override
   void initState() {
@@ -1257,13 +1289,11 @@ class _ReceiptsHubPageState extends State<ReceiptsHubPage> {
     setState(() {
       _loading = true;
     });
-    final receipts = await _database.fetchReceipts();
     final isPro = await _database.isPro();
     final scanCount = await _database.getScanCount();
+    await _refreshVisibleReceipts(showLoading: true);
     if (!mounted) return;
     setState(() {
-      _receipts = receipts;
-      _visibleReceipts = _filterReceipts(receipts);
       _loading = false;
       _isPro = isPro;
       _scansLeft = (10 - scanCount).clamp(0, 10);
@@ -1271,46 +1301,28 @@ class _ReceiptsHubPageState extends State<ReceiptsHubPage> {
   }
 
   void _applyFilters() {
-    setState(() {
-      _visibleReceipts = _filterReceipts(_receipts);
-    });
+    _refreshVisibleReceipts();
   }
 
-  List<Receipt> _filterReceipts(List<Receipt> receipts) {
-    final query = _searchController.text.trim().toLowerCase();
-    var results = receipts.where((receipt) {
-      if (_activeCategory != 'All' && receipt.category != _activeCategory) {
-        return false;
-      }
-      if (query.isEmpty) return true;
-      return receipt.merchant.toLowerCase().contains(query) ||
-          receipt.category.toLowerCase().contains(query) ||
-          receipt.purchaseDate.toLowerCase().contains(query);
-    }).toList();
-    results.sort(_sortComparator);
-    return results;
-  }
-
-  int _sortComparator(Receipt a, Receipt b) {
-    switch (_activeSort) {
-      case 'Oldest':
-        return _createdAtValue(a).compareTo(_createdAtValue(b));
-      case 'Amount high to low':
-        return _amountValue(b).compareTo(_amountValue(a));
-      case 'Amount low to high':
-        return _amountValue(a).compareTo(_amountValue(b));
-      case 'Newest':
-      default:
-        return _createdAtValue(b).compareTo(_createdAtValue(a));
+  Future<void> _refreshVisibleReceipts({bool showLoading = false}) async {
+    final requestId = ++_searchRequest;
+    if (showLoading && mounted) {
+      setState(() {
+        _loading = true;
+      });
     }
-  }
-
-  DateTime _createdAtValue(Receipt receipt) {
-    return DateTime.tryParse(receipt.createdAt) ?? DateTime.fromMillisecondsSinceEpoch(0);
-  }
-
-  int _amountValue(Receipt receipt) {
-    return receipt.totalCents ?? -1;
+    final receipts = await _database.searchReceipts(
+      query: _searchController.text.trim(),
+      category: _activeCategory,
+      sort: _activeSort,
+    );
+    if (!mounted || requestId != _searchRequest) return;
+    setState(() {
+      _visibleReceipts = receipts;
+      if (showLoading) {
+        _loading = false;
+      }
+    });
   }
 
   @override
@@ -1388,8 +1400,8 @@ class _ReceiptsHubPageState extends State<ReceiptsHubPage> {
                             if (value == null) return;
                             setState(() {
                               _activeCategory = value;
-                              _visibleReceipts = _filterReceipts(_receipts);
                             });
+                            _refreshVisibleReceipts();
                           },
                         ),
                       ),
@@ -1403,8 +1415,8 @@ class _ReceiptsHubPageState extends State<ReceiptsHubPage> {
                             if (value == null) return;
                             setState(() {
                               _activeSort = value;
-                              _visibleReceipts = _filterReceipts(_receipts);
                             });
+                            _refreshVisibleReceipts();
                           },
                         ),
                       ),
@@ -1440,9 +1452,14 @@ class _ReceiptsHubPageState extends State<ReceiptsHubPage> {
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
+                        final receipt = _visibleReceipts[index];
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 12),
-                          child: _ReceiptCard(receipt: _visibleReceipts[index]),
+                          child: _ReceiptCard(
+                            receipt: receipt,
+                            onTap: () => _openEditReceipt(receipt),
+                            onAction: () => _showReceiptActions(receipt),
+                          ),
                         );
                       },
                       childCount: _visibleReceipts.length,
@@ -1457,7 +1474,8 @@ class _ReceiptsHubPageState extends State<ReceiptsHubPage> {
   }
 
   Future<void> _exportReceipts() async {
-    if (_receipts.isEmpty) {
+    final receipts = await _database.fetchReceipts();
+    if (receipts.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No receipts to export yet.')),
       );
@@ -1468,7 +1486,7 @@ class _ReceiptsHubPageState extends State<ReceiptsHubPage> {
       buffer.writeln(
         'Merchant,Total,Purchase Date,Category,Created At',
       );
-      for (final receipt in _receipts) {
+      for (final receipt in receipts) {
         buffer.writeln(
           [
             _csvValue(receipt.merchant),
@@ -1494,6 +1512,94 @@ class _ReceiptsHubPageState extends State<ReceiptsHubPage> {
         const SnackBar(content: Text('Could not export receipts.')),
       );
     }
+  }
+
+  Future<void> _openEditReceipt(Receipt receipt) async {
+    final updated = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => EditReceiptPage(receipt: receipt),
+      ),
+    );
+    if (updated == true && mounted) {
+      _loadReceipts();
+    }
+  }
+
+  Future<void> _showReceiptActions(Receipt receipt) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 42,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE2E2E2),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.edit_outlined, color: _darkText),
+                title: const Text('Edit receipt'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _openEditReceipt(receipt);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                title: const Text('Delete receipt'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _confirmDeleteReceipt(receipt);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmDeleteReceipt(Receipt receipt) async {
+    final id = receipt.id;
+    if (id == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete receipt?'),
+        content: const Text('This will remove the receipt permanently.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _database.deleteReceipt(id);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Receipt deleted.')),
+    );
+    _loadReceipts();
   }
 
   Future<void> _openPaywall() async {
@@ -1528,6 +1634,245 @@ class _ReceiptsHubPageState extends State<ReceiptsHubPage> {
   }
 }
 
+class EditReceiptPage extends StatefulWidget {
+  final Receipt receipt;
+
+  const EditReceiptPage({super.key, required this.receipt});
+
+  @override
+  State<EditReceiptPage> createState() => _EditReceiptPageState();
+}
+
+class _EditReceiptPageState extends State<EditReceiptPage> {
+  late final TextEditingController _merchantController;
+  late final TextEditingController _totalController;
+  late final TextEditingController _dateController;
+  late final TextEditingController _categoryController;
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _merchantController = TextEditingController(text: widget.receipt.merchant);
+    _totalController = TextEditingController(
+      text: widget.receipt.totalCents == null
+          ? ''
+          : (widget.receipt.totalCents! / 100).toStringAsFixed(2),
+    );
+    _dateController = TextEditingController(text: widget.receipt.purchaseDate);
+    _categoryController = TextEditingController(text: widget.receipt.category);
+  }
+
+  @override
+  void dispose() {
+    _merchantController.dispose();
+    _totalController.dispose();
+    _dateController.dispose();
+    _categoryController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasImage = widget.receipt.imagePath.isNotEmpty &&
+        File(widget.receipt.imagePath).existsSync();
+    return WillPopScope(
+      onWillPop: () async {
+        if (FocusScope.of(context).hasFocus) {
+          FocusScope.of(context).unfocus();
+          return false;
+        }
+        return true;
+      },
+      child: Scaffold(
+        backgroundColor: _lightBackground,
+        bottomNavigationBar: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _isSaving ? null : _handleSave,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _headerGreen,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                child: _isSaving
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text(
+                        'Save changes',
+                        style: TextStyle(color: Colors.white),
+                      ),
+              ),
+            ),
+          ),
+        ),
+        body: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => FocusScope.of(context).unfocus(),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _PageHeader(
+                  title: 'Edit receipt',
+                  onBack: () => Navigator.of(context).pop(),
+                ),
+                const SizedBox(height: 12),
+                if (hasImage)
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => ReceiptImageViewer(
+                            imagePath: widget.receipt.imagePath,
+                          ),
+                        ),
+                      );
+                    },
+                    child: Container(
+                      height: 200,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF5F5F5),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: const Color(0xFFE0E0E0)),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(18),
+                        child: Image.file(
+                          File(widget.receipt.imagePath),
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
+                  ),
+                if (hasImage) const SizedBox(height: 16),
+                _InputField(
+                  label: 'Merchant',
+                  controller: _merchantController,
+                  icon: Icons.storefront,
+                ),
+                const SizedBox(height: 12),
+                _InputField(
+                  label: 'Total',
+                  controller: _totalController,
+                  keyboardType: TextInputType.number,
+                  icon: Icons.payments_outlined,
+                ),
+                const SizedBox(height: 12),
+                _InputField(
+                  label: 'Purchase date/time',
+                  controller: _dateController,
+                  icon: Icons.event,
+                ),
+                const SizedBox(height: 12),
+                _InputField(
+                  label: 'Category',
+                  controller: _categoryController,
+                  icon: Icons.sell_outlined,
+                ),
+                const SizedBox(height: 16),
+                TextButton(
+                  onPressed: _isSaving ? null : _handleDelete,
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.redAccent,
+                  ),
+                  child: const Text('Delete receipt'),
+                ),
+                const SizedBox(height: 60),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _handleSave() async {
+    if (_isSaving) return;
+    setState(() {
+      _isSaving = true;
+    });
+    try {
+      final merchant = _merchantController.text.trim();
+      final totalText = _totalController.text.trim();
+      final purchaseDate = _dateController.text.trim();
+      final categoryText = _categoryController.text.trim();
+      final category = categoryText.isEmpty ? 'Other' : categoryText;
+      final totalCents = _parseTotalCents(totalText);
+      final updated = widget.receipt.copyWith(
+        merchant: merchant,
+        totalCents: totalCents,
+        purchaseDate: purchaseDate,
+        category: category,
+      );
+      final rows = await ReceiptDatabase.instance.updateReceipt(updated);
+      if (!mounted) return;
+      if (rows == 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not update this receipt.')),
+        );
+        return;
+      }
+      Navigator.of(context).pop(true);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not update this receipt.')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _handleDelete() async {
+    final id = widget.receipt.id;
+    if (id == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete receipt?'),
+        content: const Text('This will remove the receipt permanently.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await ReceiptDatabase.instance.deleteReceipt(id);
+    if (!mounted) return;
+    Navigator.of(context).pop(true);
+  }
+}
+
 class PaywallPage extends StatefulWidget {
   const PaywallPage({super.key});
 
@@ -1536,23 +1881,133 @@ class PaywallPage extends StatefulWidget {
 }
 
 class _PaywallPageState extends State<PaywallPage> {
+  static const String _proProductId = 'receiptonce_pro';
+  final InAppPurchase _iap = InAppPurchase.instance;
+  StreamSubscription<List<PurchaseDetails>>? _purchaseSubscription;
+  ProductDetails? _product;
   bool _processing = false;
+  bool _loadingProduct = true;
+  bool _storeAvailable = false;
+  String? _storeError;
 
-  Future<void> _unlockPro() async {
-    if (_processing) return;
-    setState(() {
-      _processing = true;
+  @override
+  void initState() {
+    super.initState();
+    _purchaseSubscription =
+        _iap.purchaseStream.listen(_handlePurchaseUpdates, onError: (error) {
+      if (!mounted) return;
+      setState(() {
+        _processing = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Purchase failed. Try again.')),
+      );
     });
+    _loadStore();
+  }
+
+  @override
+  void dispose() {
+    _purchaseSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadStore() async {
+    final available = await _iap.isAvailable();
+    if (!mounted) return;
+    if (!available) {
+      setState(() {
+        _loadingProduct = false;
+        _storeAvailable = false;
+        _storeError = 'Store unavailable right now.';
+      });
+      return;
+    }
+    final response = await _iap.queryProductDetails({_proProductId});
+    if (!mounted) return;
+    if (response.error != null) {
+      setState(() {
+        _loadingProduct = false;
+        _storeAvailable = false;
+        _storeError = response.error!.message;
+      });
+      return;
+    }
+    if (response.productDetails.isEmpty) {
+      setState(() {
+        _loadingProduct = false;
+        _storeAvailable = false;
+        _storeError = 'Product not found. Check store IDs.';
+      });
+      return;
+    }
+    setState(() {
+      _product = response.productDetails.first;
+      _loadingProduct = false;
+      _storeAvailable = true;
+    });
+  }
+
+  Future<void> _handlePurchaseUpdates(
+    List<PurchaseDetails> purchases,
+  ) async {
+    for (final purchase in purchases) {
+      if (purchase.status == PurchaseStatus.pending) {
+        if (mounted) {
+          setState(() {
+            _processing = true;
+          });
+        }
+        continue;
+      }
+      if (purchase.status == PurchaseStatus.error) {
+        if (mounted) {
+          setState(() {
+            _processing = false;
+          });
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Purchase failed.')),
+          );
+        }
+        continue;
+      }
+      if (purchase.status == PurchaseStatus.purchased ||
+          purchase.status == PurchaseStatus.restored) {
+        await _deliverPro();
+      }
+      if (purchase.pendingCompletePurchase) {
+        await _iap.completePurchase(purchase);
+      }
+    }
+  }
+
+  Future<void> _deliverPro() async {
     await ReceiptDatabase.instance.setPro(true);
     if (!mounted) return;
+    setState(() {
+      _processing = false;
+    });
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('ReceiptOnce Pro unlocked.')),
     );
     Navigator.of(context).pop();
   }
 
+  Future<void> _startPurchase() async {
+    if (_processing || !_storeAvailable || _product == null) return;
+    setState(() {
+      _processing = true;
+    });
+    final purchaseParam = PurchaseParam(productDetails: _product!);
+    await _iap.buyNonConsumable(purchaseParam: purchaseParam);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final priceLabel =
+        _product == null ? 'Unlock lifetime access' : 'Unlock for ${_product!.price}';
     return Scaffold(
       backgroundColor: _lightBackground,
       body: SafeArea(
@@ -1607,11 +2062,29 @@ class _PaywallPageState extends State<PaywallPage> {
                   ],
                 ),
               ),
+              if (_loadingProduct)
+                const Padding(
+                  padding: EdgeInsets.only(top: 12),
+                  child: LinearProgressIndicator(
+                    color: _headerGreen,
+                    backgroundColor: Color(0xFFE9E9E9),
+                  ),
+                ),
+              if (_storeError != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Text(
+                    _storeError!,
+                    style: const TextStyle(color: _mutedText),
+                  ),
+                ),
               const Spacer(),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _processing ? null : _unlockPro,
+                  onPressed: _processing || !_storeAvailable
+                      ? null
+                      : _startPurchase,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _headerGreen,
                     padding: const EdgeInsets.symmetric(vertical: 14),
@@ -1628,9 +2101,9 @@ class _PaywallPageState extends State<PaywallPage> {
                             color: Colors.white,
                           ),
                         )
-                      : const Text(
-                          'Unlock lifetime access',
-                          style: TextStyle(color: Colors.white),
+                      : Text(
+                          priceLabel,
+                          style: const TextStyle(color: Colors.white),
                         ),
                 ),
               ),
@@ -1639,6 +2112,159 @@ class _PaywallPageState extends State<PaywallPage> {
                 child: Text(
                   'One-time purchase • No subscriptions',
                   style: TextStyle(color: _mutedText),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class MenuPage extends StatefulWidget {
+  const MenuPage({super.key});
+
+  @override
+  State<MenuPage> createState() => _MenuPageState();
+}
+
+class _MenuPageState extends State<MenuPage> {
+  bool _loading = true;
+  bool _isPro = false;
+  int _scanCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMenuData();
+  }
+
+  Future<void> _loadMenuData() async {
+    setState(() {
+      _loading = true;
+    });
+    final isPro = await ReceiptDatabase.instance.isPro();
+    final scanCount = await ReceiptDatabase.instance.getScanCount();
+    if (!mounted) return;
+    setState(() {
+      _isPro = isPro;
+      _scanCount = scanCount;
+      _loading = false;
+    });
+  }
+
+  Future<void> _openPaywall() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const PaywallPage()),
+    );
+    if (mounted) {
+      _loadMenuData();
+    }
+  }
+
+  Future<void> _openReceipts() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const ReceiptsHubPage()),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scansLeft = (10 - _scanCount).clamp(0, 10);
+    return Scaffold(
+      backgroundColor: _lightBackground,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _PageHeader(
+                title: 'Menu',
+                onBack: () => Navigator.of(context).pop(),
+              ),
+              const SizedBox(height: 20),
+              if (_loading)
+                const Center(
+                  child: CircularProgressIndicator(color: _headerGreen),
+                )
+              else
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: const Color(0xFFE5E5E5)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Account',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: _darkText,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        _isPro ? 'Plan: Pro' : 'Plan: Free',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: _mutedText,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (!_isPro) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          '$scansLeft free scans left',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: _mutedText,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _isPro ? null : _openPaywall,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _headerGreen,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: Text(
+                    _isPro ? 'Pro active' : 'Upgrade to Pro',
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: _openReceipts,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _darkText,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    side: const BorderSide(color: Color(0xFFE2E2E2)),
+                    backgroundColor: Colors.white,
+                  ),
+                  child: const Text('View receipts'),
                 ),
               ),
             ],
