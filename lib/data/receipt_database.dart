@@ -59,6 +59,103 @@ class ReceiptDatabase {
     return rows.map(Receipt.fromMap).toList();
   }
 
+  Future<List<Receipt>> searchReceipts({
+    String query = '',
+    String category = 'All',
+    String sort = 'Newest',
+  }) async {
+    final db = await database;
+    final whereParts = <String>[];
+    final whereArgs = <Object?>[];
+
+    if (category != 'All') {
+      whereParts.add('category = ?');
+      whereArgs.add(category);
+    }
+
+    final trimmedQuery = query.trim();
+    if (trimmedQuery.isNotEmpty) {
+      final likeQuery = '%$trimmedQuery%';
+      final conditions = <String>[
+        'merchant LIKE ?',
+        'category LIKE ?',
+        'purchase_date LIKE ?',
+        'raw_text LIKE ?',
+        'created_at LIKE ?',
+      ];
+      whereArgs.addAll([
+        likeQuery,
+        likeQuery,
+        likeQuery,
+        likeQuery,
+        likeQuery,
+      ]);
+      final cents = _parseQueryCents(trimmedQuery);
+      if (cents != null) {
+        conditions.add('total_cents = ?');
+        whereArgs.add(cents);
+      }
+      whereParts.add('(${conditions.join(' OR ')})');
+    }
+
+    final whereClause =
+        whereParts.isEmpty ? null : whereParts.join(' AND ');
+
+    return (await db.query(
+      'receipts',
+      where: whereClause,
+      whereArgs: whereArgs,
+      orderBy: _orderByForSort(sort),
+    ))
+        .map(Receipt.fromMap)
+        .toList();
+  }
+
+  String _orderByForSort(String sort) {
+    switch (sort) {
+      case 'Oldest':
+        return 'created_at ASC';
+      case 'Amount high to low':
+        return 'CASE WHEN total_cents IS NULL THEN 1 ELSE 0 END, total_cents DESC, created_at DESC';
+      case 'Amount low to high':
+        return 'CASE WHEN total_cents IS NULL THEN 1 ELSE 0 END, total_cents ASC, created_at DESC';
+      case 'Newest':
+      default:
+        return 'created_at DESC';
+    }
+  }
+
+  int? _parseQueryCents(String query) {
+    final cleaned = query.replaceAll(RegExp(r'[^0-9.]'), '');
+    if (cleaned.isEmpty) return null;
+    final value = double.tryParse(cleaned);
+    if (value == null) return null;
+    return (value * 100).round();
+  }
+
+  Future<int> updateReceipt(Receipt receipt) async {
+    final db = await database;
+    final id = receipt.id;
+    if (id == null) return 0;
+    final data = receipt.toMap();
+    data.remove('id');
+    return db.update(
+      'receipts',
+      data,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<int> deleteReceipt(int id) async {
+    final db = await database;
+    return db.delete(
+      'receipts',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   Future<int> getScanCount() async {
     final db = await database;
     final rows =
