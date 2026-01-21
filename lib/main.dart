@@ -5,9 +5,16 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:share_plus/share_plus.dart';
+
+import 'data/receipt.dart';
+import 'data/receipt_database.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const ReceiptOnceApp());
 }
 
@@ -47,6 +54,14 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocus = FocusNode();
+  final ReceiptDatabase _database = ReceiptDatabase.instance;
+  List<Receipt> _recentReceipts = [];
+  bool _loading = true;
+  int _monthTotalCents = 0;
+  int _monthReceiptCount = 0;
+  String _topCategory = 'Other';
+  int _scansLeft = 10;
+  bool _isPro = false;
 
   @override
   void dispose() {
@@ -56,37 +71,43 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final receiptItems = [
-      _ReceiptItem(
-        merchant: 'Whole Foods Market',
-        date: 'Jan 17, 2026',
-        amount: '\$87.43',
-        category: 'Food',
-        categoryColor: const Color(0xFF46A047),
-        icon: Icons.store_outlined,
-        gradient: const [Color(0xFFF1E7D0), Color(0xFFC9B79A)],
-      ),
-      _ReceiptItem(
-        merchant: 'Shell Gas Station',
-        date: 'Jan 16, 2026',
-        amount: '\$52.10',
-        category: 'Transport',
-        categoryColor: const Color(0xFF2D86F0),
-        icon: Icons.local_gas_station_outlined,
-        gradient: const [Color(0xFFE8D7C5), Color(0xFFB59374)],
-      ),
-      _ReceiptItem(
-        merchant: 'Amazon',
-        date: 'Jan 14, 2026',
-        amount: '\$124.99',
-        category: 'Shopping',
-        categoryColor: const Color(0xFF8B2BBE),
-        icon: Icons.shopping_bag_outlined,
-        gradient: const [Color(0xFFE7E3F5), Color(0xFFC0B6DE)],
-      ),
-    ];
+  void initState() {
+    super.initState();
+    _loadHomeData();
+  }
 
+  Future<void> _loadHomeData() async {
+    setState(() {
+      _loading = true;
+    });
+    final receipts = await _database.fetchReceipts();
+    final isPro = await _database.isPro();
+    final scanCount = await _database.getScanCount();
+    final now = DateTime.now();
+    final monthReceipts = receipts.where((receipt) {
+      final createdAt = DateTime.tryParse(receipt.createdAt);
+      if (createdAt == null) return false;
+      return createdAt.year == now.year && createdAt.month == now.month;
+    }).toList();
+    final monthTotal = monthReceipts.fold<int>(
+      0,
+      (sum, receipt) => sum + (receipt.totalCents ?? 0),
+    );
+    final topCategory = _topCategoryFromReceipts(monthReceipts);
+    if (!mounted) return;
+    setState(() {
+      _recentReceipts = receipts.take(3).toList();
+      _monthTotalCents = monthTotal;
+      _monthReceiptCount = monthReceipts.length;
+      _topCategory = topCategory;
+      _scansLeft = (10 - scanCount).clamp(0, 10);
+      _isPro = isPro;
+      _loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return WillPopScope(
       onWillPop: () async {
         if (_searchFocus.hasFocus) {
@@ -111,7 +132,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
+                    children: [
                       Text(
                         'ReceiptOnce',
                         style: TextStyle(
@@ -122,7 +143,13 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                       SizedBox(height: 18),
-                      _SummaryCard(),
+                      _SummaryCard(
+                        totalCents: _monthTotalCents,
+                        receiptCount: _monthReceiptCount,
+                        topCategory: _topCategory,
+                        scansLeft: _scansLeft,
+                        isPro: _isPro,
+                      ),
                     ],
                   ),
                 ),
@@ -156,6 +183,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               builder: (_) => const ReceiptsHubPage(),
                             ),
                           );
+                          await _loadHomeData();
                           _searchFocus.unfocus();
                         },
                           child: Container(
@@ -182,7 +210,23 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    ...receiptItems.map((item) => _ReceiptListItem(item: item)),
+                    if (_loading)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 20),
+                          child: CircularProgressIndicator(
+                            color: _headerGreen,
+                          ),
+                        ),
+                      )
+                    else if (_recentReceipts.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 24),
+                        child: _EmptyHomeState(),
+                      )
+                    else
+                      ..._recentReceipts
+                          .map((item) => _ReceiptDataListItem(receipt: item)),
                     const SizedBox(height: 90),
                   ],
                 ),
@@ -238,6 +282,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             builder: (_) => const ReceiptsHubPage(),
                           ),
                         );
+                        await _loadHomeData();
                         _searchFocus.unfocus();
                       },
                     ),
@@ -255,6 +300,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         builder: (_) => const CameraCapturePage(),
                       ),
                     );
+                    await _loadHomeData();
                     _searchFocus.unfocus();
                   },
                   child: Container(
@@ -298,10 +344,23 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 class _SummaryCard extends StatelessWidget {
-  const _SummaryCard();
+  final int totalCents;
+  final int receiptCount;
+  final String topCategory;
+  final int scansLeft;
+  final bool isPro;
+
+  const _SummaryCard({
+    required this.totalCents,
+    required this.receiptCount,
+    required this.topCategory,
+    required this.scansLeft,
+    required this.isPro,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final totalText = _formatCents(totalCents);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -328,9 +387,9 @@ class _SummaryCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
-            '\$264.52',
-            style: TextStyle(
+          Text(
+            totalText == '--' ? '\$0.00' : totalText,
+            style: const TextStyle(
               fontSize: 36,
               fontWeight: FontWeight.w700,
               color: Colors.white,
@@ -338,20 +397,40 @@ class _SummaryCard extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           Row(
-            children: const [
+            children: [
               Expanded(
                 child: _MetricTile(
                   icon: Icons.receipt_long,
                   label: 'Receipts',
-                  value: '3',
+                  value: '$receiptCount',
                 ),
               ),
-              SizedBox(width: 12),
+              const SizedBox(width: 12),
               Expanded(
                 child: _MetricTile(
                   icon: Icons.trending_up,
                   label: 'Top',
-                  value: 'Food',
+                  value: topCategory.isEmpty ? 'Other' : topCategory,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3A3A3A),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  isPro ? 'Pro active' : '$scansLeft free scans left',
+                  style: const TextStyle(
+                    color: Color(0xFFD9D9D9),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
                 ),
               ),
             ],
@@ -448,6 +527,379 @@ class _SearchBar extends StatelessWidget {
           hintStyle: TextStyle(color: _mutedText),
           icon: Icon(Icons.search, color: _headerGreen),
         ),
+      ),
+    );
+  }
+}
+
+class _ReceiptsSearchField extends StatelessWidget {
+  final TextEditingController controller;
+
+  const _ReceiptsSearchField({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E2E2)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: TextField(
+        controller: controller,
+        decoration: InputDecoration(
+          border: InputBorder.none,
+          hintText: 'Search by merchant, category, or date',
+          hintStyle: TextStyle(color: _mutedText),
+          icon: Icon(Icons.search, color: _headerGreen),
+        ),
+      ),
+    );
+  }
+}
+
+class _FilterDropdown extends StatelessWidget {
+  final String value;
+  final List<String> items;
+  final String label;
+  final ValueChanged<String?> onChanged;
+
+  const _FilterDropdown({
+    required this.value,
+    required this.items,
+    required this.label,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: _mutedText,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 6),
+        DropdownButtonHideUnderline(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE2E2E2)),
+            ),
+            child: DropdownButton<String>(
+              value: value,
+              isExpanded: true,
+              borderRadius: BorderRadius.circular(16),
+              dropdownColor: Colors.white,
+              icon: const Icon(Icons.keyboard_arrow_down_rounded),
+              items: items
+                  .map(
+                    (item) => DropdownMenuItem(
+                      value: item,
+                      child: Text(
+                        item,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: _darkText,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
+              onChanged: onChanged,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FreeTierBanner extends StatelessWidget {
+  final int scansLeft;
+
+  const _FreeTierBanner({required this.scansLeft});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE7F4ED),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFCBE7D7)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.lock_open_rounded, color: _headerGreen, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '$scansLeft free scans left before upgrade',
+              style: const TextStyle(
+                color: Color(0xFF1D5A3E),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _UpgradePill extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _UpgradePill({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: const Color(0xFF2A2A2A),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Text(
+          'Go Pro',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+            fontSize: 12,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyReceiptsState extends StatelessWidget {
+  final VoidCallback onScan;
+  final VoidCallback onManual;
+
+  const _EmptyReceiptsState({
+    required this.onScan,
+    required this.onManual,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(
+          width: 68,
+          height: 68,
+          decoration: BoxDecoration(
+            color: const Color(0xFFE9F3EE),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: const Icon(
+            Icons.receipt_long,
+            size: 34,
+            color: _headerGreen,
+          ),
+        ),
+        const SizedBox(height: 16),
+        const Text(
+          'No receipts yet',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: _darkText,
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Tap + to scan your first receipt.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: _mutedText,
+            fontSize: 14,
+          ),
+        ),
+        const SizedBox(height: 18),
+        SizedBox(
+          width: 180,
+          child: ElevatedButton.icon(
+            onPressed: onScan,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _headerGreen,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            icon: const Icon(Icons.camera_alt, color: Colors.white),
+            label: const Text(
+              'Scan receipt',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextButton(
+          onPressed: onManual,
+          child: const Text(
+            'Enter manually',
+            style: TextStyle(color: _headerGreen),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PaywallFeatureRow extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _PaywallFeatureRow({
+    required this.icon,
+    required this.text,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, color: _headerGreen, size: 18),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              color: _darkText,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ReceiptCard extends StatelessWidget {
+  final Receipt receipt;
+
+  const _ReceiptCard({required this.receipt});
+
+  @override
+  Widget build(BuildContext context) {
+    final dateText = _receiptDateLabel(receipt);
+    final amountText = _formatCents(receipt.totalCents);
+    final hasImage =
+        receipt.imagePath.isNotEmpty && File(receipt.imagePath).existsSync();
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE6E6E6)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
+              width: 64,
+              height: 64,
+              color: const Color(0xFFE7EFEA),
+              child: hasImage
+                  ? Image.file(
+                      File(receipt.imagePath),
+                      fit: BoxFit.cover,
+                    )
+                  : const Icon(
+                      Icons.receipt_long,
+                      color: _headerGreen,
+                      size: 30,
+                    ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  receipt.merchant.isEmpty ? 'Untitled receipt' : receipt.merchant,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: _darkText,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8E8E8),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    receipt.category.isEmpty ? 'Other' : receipt.category,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF5F5F5F),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  dateText.isEmpty ? 'Date not set' : dateText,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: _mutedText,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 96,
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                amountText,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF45A146),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -617,48 +1069,576 @@ class _ReceiptListItem extends StatelessWidget {
   }
 }
 
-class ReceiptsHubPage extends StatelessWidget {
+class _ReceiptDataListItem extends StatelessWidget {
+  final Receipt receipt;
+
+  const _ReceiptDataListItem({required this.receipt});
+
+  @override
+  Widget build(BuildContext context) {
+    final amountText = _formatCents(receipt.totalCents);
+    final dateText = _receiptDateLabel(receipt);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFAFAFA),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE6E6E6)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: _headerGreen,
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: receipt.imagePath.isNotEmpty && File(receipt.imagePath).existsSync()
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(18),
+                    child: Image.file(
+                      File(receipt.imagePath),
+                      fit: BoxFit.cover,
+                    ),
+                  )
+                : const Icon(
+                    Icons.receipt_long,
+                    color: Colors.white,
+                    size: 30,
+                  ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  receipt.merchant.isEmpty ? 'Untitled receipt' : receipt.merchant,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: _darkText,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8E8E8),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    receipt.category.isEmpty ? 'Other' : receipt.category,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF5F5F5F),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  dateText.isEmpty ? 'Date not set' : dateText,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: _mutedText,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 88,
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                amountText,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF45A146),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyHomeState extends StatelessWidget {
+  const _EmptyHomeState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE6E6E6)),
+      ),
+      child: Row(
+        children: const [
+          Icon(Icons.receipt_long, color: _headerGreen, size: 28),
+          SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'No receipts yet. Tap + to scan your first one.',
+              style: TextStyle(color: _mutedText, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class ReceiptsHubPage extends StatefulWidget {
   const ReceiptsHubPage({super.key});
+
+  @override
+  State<ReceiptsHubPage> createState() => _ReceiptsHubPageState();
+}
+
+class _ReceiptsHubPageState extends State<ReceiptsHubPage> {
+  final ReceiptDatabase _database = ReceiptDatabase.instance;
+  final TextEditingController _searchController = TextEditingController();
+  final List<String> _categories = const [
+    'All',
+    'Food',
+    'Transport',
+    'Shopping',
+    'Office',
+    'Other',
+  ];
+  final List<String> _sortOptions = const [
+    'Newest',
+    'Oldest',
+    'Amount high to low',
+    'Amount low to high',
+  ];
+  String _activeCategory = 'All';
+  String _activeSort = 'Newest';
+  List<Receipt> _receipts = [];
+  List<Receipt> _visibleReceipts = [];
+  bool _loading = true;
+  bool _isPro = false;
+  int _scansLeft = 10;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(_applyFilters);
+    _loadReceipts();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadReceipts() async {
+    setState(() {
+      _loading = true;
+    });
+    final receipts = await _database.fetchReceipts();
+    final isPro = await _database.isPro();
+    final scanCount = await _database.getScanCount();
+    if (!mounted) return;
+    setState(() {
+      _receipts = receipts;
+      _visibleReceipts = _filterReceipts(receipts);
+      _loading = false;
+      _isPro = isPro;
+      _scansLeft = (10 - scanCount).clamp(0, 10);
+    });
+  }
+
+  void _applyFilters() {
+    setState(() {
+      _visibleReceipts = _filterReceipts(_receipts);
+    });
+  }
+
+  List<Receipt> _filterReceipts(List<Receipt> receipts) {
+    final query = _searchController.text.trim().toLowerCase();
+    var results = receipts.where((receipt) {
+      if (_activeCategory != 'All' && receipt.category != _activeCategory) {
+        return false;
+      }
+      if (query.isEmpty) return true;
+      return receipt.merchant.toLowerCase().contains(query) ||
+          receipt.category.toLowerCase().contains(query) ||
+          receipt.purchaseDate.toLowerCase().contains(query);
+    }).toList();
+    results.sort(_sortComparator);
+    return results;
+  }
+
+  int _sortComparator(Receipt a, Receipt b) {
+    switch (_activeSort) {
+      case 'Oldest':
+        return _createdAtValue(a).compareTo(_createdAtValue(b));
+      case 'Amount high to low':
+        return _amountValue(b).compareTo(_amountValue(a));
+      case 'Amount low to high':
+        return _amountValue(a).compareTo(_amountValue(b));
+      case 'Newest':
+      default:
+        return _createdAtValue(b).compareTo(_createdAtValue(a));
+    }
+  }
+
+  DateTime _createdAtValue(Receipt receipt) {
+    return DateTime.tryParse(receipt.createdAt) ?? DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
+  int _amountValue(Receipt receipt) {
+    return receipt.totalCents ?? -1;
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _lightBackground,
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          Navigator.of(context).push(
+      floatingActionButton: FloatingActionButton(
+        onPressed: () async {
+          await Navigator.of(context).push(
             MaterialPageRoute(
-              builder: (_) => const ManualEntryPage(),
+              builder: (_) => const CameraCapturePage(),
             ),
           );
+          if (mounted) {
+            _loadReceipts();
+          }
         },
         backgroundColor: _headerGreen,
-        icon: const Icon(Icons.edit, color: Colors.white),
-        label: const Text(
-          'Enter manually',
-          style: TextStyle(color: Colors.white),
-        ),
+        child: const Icon(Icons.add, color: Colors.white),
       ),
       body: SafeArea(
         bottom: false,
+        child: RefreshIndicator(
+          onRefresh: _loadReceipts,
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                  child: _PageHeader(
+                    title: 'Receipts',
+                    onBack: () => Navigator.of(context).pop(),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _IconButton(
+                          icon: Icons.download_rounded,
+                          iconColor: _headerGreen,
+                          onTap: _exportReceipts,
+                        ),
+                        if (!_isPro) ...[
+                          const SizedBox(width: 8),
+                          _UpgradePill(onTap: _openPaywall),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              if (!_isPro)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                    child: _FreeTierBanner(scansLeft: _scansLeft),
+                  ),
+                ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                  child: _ReceiptsSearchField(controller: _searchController),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _FilterDropdown(
+                          value: _activeCategory,
+                          items: _categories,
+                          label: 'Category',
+                          onChanged: (value) {
+                            if (value == null) return;
+                            setState(() {
+                              _activeCategory = value;
+                              _visibleReceipts = _filterReceipts(_receipts);
+                            });
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _FilterDropdown(
+                          value: _activeSort,
+                          items: _sortOptions,
+                          label: 'Sort',
+                          onChanged: (value) {
+                            if (value == null) return;
+                            setState(() {
+                              _activeSort = value;
+                              _visibleReceipts = _filterReceipts(_receipts);
+                            });
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SliverToBoxAdapter(
+                child: SizedBox(height: 12),
+              ),
+              if (_loading)
+                const SliverFillRemaining(
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      color: _headerGreen,
+                    ),
+                  ),
+                )
+              else if (_visibleReceipts.isEmpty)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                    child: _EmptyReceiptsState(
+                      onScan: _handleEmptyScan,
+                      onManual: _handleEmptyManual,
+                    ),
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _ReceiptCard(receipt: _visibleReceipts[index]),
+                        );
+                      },
+                      childCount: _visibleReceipts.length,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _exportReceipts() async {
+    if (_receipts.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No receipts to export yet.')),
+      );
+      return;
+    }
+    try {
+      final buffer = StringBuffer();
+      buffer.writeln(
+        'Merchant,Total,Purchase Date,Category,Created At',
+      );
+      for (final receipt in _receipts) {
+        buffer.writeln(
+          [
+            _csvValue(receipt.merchant),
+            _csvValue(_formatCents(receipt.totalCents)),
+            _csvValue(receipt.purchaseDate),
+            _csvValue(receipt.category),
+            _csvValue(receipt.createdAt),
+          ].join(','),
+        );
+      }
+      final dir = await getTemporaryDirectory();
+      final filename = 'receiptonce-export-${DateTime.now().millisecondsSinceEpoch}.csv';
+      final path = p.join(dir.path, filename);
+      await File(path).writeAsString(buffer.toString());
+      await Share.shareXFiles(
+        [XFile(path)],
+        subject: 'ReceiptOnce export',
+        text: 'Your ReceiptOnce export is attached.',
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not export receipts.')),
+      );
+    }
+  }
+
+  Future<void> _openPaywall() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const PaywallPage()),
+    );
+    if (mounted) {
+      _loadReceipts();
+    }
+  }
+
+  Future<void> _handleEmptyScan() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const CameraCapturePage(),
+      ),
+    );
+    if (mounted) {
+      _loadReceipts();
+    }
+  }
+
+  Future<void> _handleEmptyManual() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const ManualEntryPage(),
+      ),
+    );
+    if (mounted) {
+      _loadReceipts();
+    }
+  }
+}
+
+class PaywallPage extends StatefulWidget {
+  const PaywallPage({super.key});
+
+  @override
+  State<PaywallPage> createState() => _PaywallPageState();
+}
+
+class _PaywallPageState extends State<PaywallPage> {
+  bool _processing = false;
+
+  Future<void> _unlockPro() async {
+    if (_processing) return;
+    setState(() {
+      _processing = true;
+    });
+    await ReceiptDatabase.instance.setPro(true);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('ReceiptOnce Pro unlocked.')),
+    );
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _lightBackground,
+      body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _PageHeader(
-                title: 'Receipts',
+                title: 'ReceiptOnce Pro',
                 onBack: () => Navigator.of(context).pop(),
               ),
-              const Expanded(
-                child: Center(
-                  child: Text(
-                    'Receipts hub',
-                    style: TextStyle(
-                      color: _mutedText,
-                      fontSize: 16,
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: const Color(0xFFE5E5E5)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Text(
+                      'Unlock unlimited scans',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: _darkText,
+                      ),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'Keep every receipt in one place and export whenever tax season arrives.',
+                      style: TextStyle(color: _mutedText),
+                    ),
+                    SizedBox(height: 16),
+                    _PaywallFeatureRow(
+                      icon: Icons.all_inclusive,
+                      text: 'Unlimited receipt scans',
+                    ),
+                    SizedBox(height: 10),
+                    _PaywallFeatureRow(
+                      icon: Icons.cloud_download_outlined,
+                      text: 'Export CSV anytime',
+                    ),
+                    SizedBox(height: 10),
+                    _PaywallFeatureRow(
+                      icon: Icons.analytics_outlined,
+                      text: 'Full summaries and insights',
+                    ),
+                  ],
+                ),
+              ),
+              const Spacer(),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _processing ? null : _unlockPro,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _headerGreen,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
                     ),
                   ),
+                  child: _processing
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          'Unlock lifetime access',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Center(
+                child: Text(
+                  'One-time purchase • No subscriptions',
+                  style: TextStyle(color: _mutedText),
                 ),
               ),
             ],
@@ -1268,6 +2248,7 @@ class _ReceiptEditorPageState extends State<ReceiptEditorPage> {
   late final TextEditingController _totalController;
   late final TextEditingController _dateController;
   late final TextEditingController _categoryController;
+  bool _isSaving = false;
 
   @override
   void initState() {
@@ -1310,27 +2291,34 @@ class _ReceiptEditorPageState extends State<ReceiptEditorPage> {
           top: false,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-          child: SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _headerGreen,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _isSaving ? null : _handleConfirm,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _headerGreen,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                 ),
-              ),
-              child: const Text(
-                'Confirm receipt',
-                style: TextStyle(color: Colors.white),
+                child: _isSaving
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text(
+                        'Confirm receipt',
+                        style: TextStyle(color: Colors.white),
+                      ),
               ),
             ),
           ),
         ),
-      ),
         body: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () => FocusScope.of(context).unfocus(),
@@ -1487,6 +2475,94 @@ class _ReceiptEditorPageState extends State<ReceiptEditorPage> {
       ),
     );
   }
+
+  Future<void> _handleConfirm() async {
+    if (_isSaving) return;
+    setState(() {
+      _isSaving = true;
+    });
+    try {
+      final merchant = _merchantController.text.trim();
+      final totalText = _totalController.text.trim();
+      final purchaseDate = _dateController.text.trim();
+      final categoryText = _categoryController.text.trim();
+      final category = categoryText.isEmpty ? 'Other' : categoryText;
+      final totalCents = _parseTotalCents(totalText);
+      final receipt = Receipt(
+        merchant: merchant,
+        totalCents: totalCents,
+        purchaseDate: purchaseDate,
+        category: category,
+        imagePath: widget.draft.imagePath,
+        rawText: widget.draft.rawText,
+        createdAt: DateTime.now().toIso8601String(),
+      );
+      final database = ReceiptDatabase.instance;
+      final isPro = await database.isPro();
+      if (!isPro) {
+        final scanCount = await database.getScanCount();
+        if (scanCount >= 10) {
+          if (!mounted) return;
+          final shouldUpgrade = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Free scans used'),
+              content: const Text(
+                'You have used all 10 free scans. Upgrade to keep scanning receipts.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Not now'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _headerGreen,
+                  ),
+                  child: const Text(
+                    'Upgrade',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+          );
+          if (mounted) {
+            setState(() {
+              _isSaving = false;
+            });
+          }
+          if (shouldUpgrade == true && mounted) {
+            await Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const PaywallPage()),
+            );
+          }
+          return;
+        }
+      }
+      await database.insertReceipt(receipt);
+      if (!isPro) {
+        await database.incrementScanCount();
+      }
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const ReceiptsHubPage()),
+        (route) => route.isFirst,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not save this receipt.')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
+  }
 }
 
 class ManualEntryPage extends StatefulWidget {
@@ -1503,6 +2579,7 @@ class _ManualEntryPageState extends State<ManualEntryPage> {
   final TextEditingController _totalController = TextEditingController();
   final TextEditingController _dateController = TextEditingController();
   final TextEditingController _categoryController = TextEditingController();
+  bool _isSaving = false;
 
   @override
   void dispose() {
@@ -1596,7 +2673,7 @@ class _ManualEntryPageState extends State<ManualEntryPage> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: () {},
+                    onPressed: _isSaving ? null : _handleSave,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _headerGreen,
                       padding: const EdgeInsets.symmetric(vertical: 14),
@@ -1604,10 +2681,19 @@ class _ManualEntryPageState extends State<ManualEntryPage> {
                         borderRadius: BorderRadius.circular(14),
                       ),
                     ),
-                    child: const Text(
-                      'Save receipt',
-                      style: TextStyle(color: Colors.white),
-                    ),
+                    child: _isSaving
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text(
+                            'Save receipt',
+                            style: TextStyle(color: Colors.white),
+                          ),
                   ),
                 ),
               ],
@@ -1616,6 +2702,47 @@ class _ManualEntryPageState extends State<ManualEntryPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _handleSave() async {
+    if (_isSaving) return;
+    setState(() {
+      _isSaving = true;
+    });
+    try {
+      final merchant = _merchantController.text.trim();
+      final totalText = _totalController.text.trim();
+      final purchaseDate = _dateController.text.trim();
+      final categoryText = _categoryController.text.trim();
+      final category = categoryText.isEmpty ? 'Other' : categoryText;
+      final totalCents = _parseTotalCents(totalText);
+      final receipt = Receipt(
+        merchant: merchant,
+        totalCents: totalCents,
+        purchaseDate: purchaseDate,
+        category: category,
+        imagePath: '',
+        rawText: '',
+        createdAt: DateTime.now().toIso8601String(),
+      );
+      await ReceiptDatabase.instance.insertReceipt(receipt);
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const ReceiptsHubPage()),
+        (route) => route.isFirst,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not save this receipt.')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
   }
 }
 
@@ -1824,6 +2951,64 @@ class _IconButton extends StatelessWidget {
       ),
     );
   }
+}
+
+int? _parseTotalCents(String input) {
+  final cleaned = input.replaceAll(RegExp(r'[^0-9.]'), '');
+  if (cleaned.isEmpty) return null;
+  final value = double.tryParse(cleaned);
+  if (value == null) return null;
+  return (value * 100).round();
+}
+
+String _formatCents(int? cents) {
+  if (cents == null) return '--';
+  final value = cents / 100;
+  return '\$${value.toStringAsFixed(2)}';
+}
+
+String _receiptDateLabel(Receipt receipt) {
+  final dateText = receipt.purchaseDate.trim();
+  if (dateText.isNotEmpty) return dateText;
+  final createdAt = DateTime.tryParse(receipt.createdAt);
+  if (createdAt == null) return '';
+  return _formatDate(createdAt);
+}
+
+String _formatDate(DateTime date) {
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  final month = months[date.month - 1];
+  return '$month ${date.day}, ${date.year}';
+}
+
+String _csvValue(String value) {
+  final escaped = value.replaceAll('"', '""');
+  return '"$escaped"';
+}
+
+String _topCategoryFromReceipts(List<Receipt> receipts) {
+  if (receipts.isEmpty) return 'Other';
+  final counts = <String, int>{};
+  for (final receipt in receipts) {
+    final key = receipt.category.isEmpty ? 'Other' : receipt.category;
+    counts[key] = (counts[key] ?? 0) + 1;
+  }
+  final sorted = counts.entries.toList()
+    ..sort((a, b) => b.value.compareTo(a.value));
+  return sorted.first.key;
 }
 
 class ReceiptDraft {
