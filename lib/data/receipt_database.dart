@@ -21,7 +21,7 @@ class ReceiptDatabase {
     final path = p.join(dir.path, 'receiptonce.db');
     return openDatabase(
       path,
-      version: 1,
+      version: 3,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE receipts (
@@ -32,6 +32,7 @@ class ReceiptDatabase {
             category TEXT,
             image_path TEXT,
             raw_text TEXT,
+            note TEXT,
             created_at TEXT NOT NULL
           )
         ''');
@@ -41,7 +42,28 @@ class ReceiptDatabase {
             value TEXT
           )
         ''');
+        await _createIndexes(db);
       },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await _createIndexes(db);
+        }
+        if (oldVersion < 3) {
+          await db.execute('ALTER TABLE receipts ADD COLUMN note TEXT');
+        }
+      },
+    );
+  }
+
+  Future<void> _createIndexes(Database db) async {
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_receipts_created_at ON receipts(created_at)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_receipts_category ON receipts(category)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_receipts_total_cents ON receipts(total_cents)',
     );
   }
 
@@ -81,9 +103,11 @@ class ReceiptDatabase {
         'category LIKE ?',
         'purchase_date LIKE ?',
         'raw_text LIKE ?',
+        'note LIKE ?',
         'created_at LIKE ?',
       ];
       whereArgs.addAll([
+        likeQuery,
         likeQuery,
         likeQuery,
         likeQuery,

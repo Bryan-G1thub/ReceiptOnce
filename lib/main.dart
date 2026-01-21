@@ -1457,8 +1457,7 @@ class _ReceiptsHubPageState extends State<ReceiptsHubPage> {
                           padding: const EdgeInsets.only(bottom: 12),
                           child: _ReceiptCard(
                             receipt: receipt,
-                            onTap: () => _openEditReceipt(receipt),
-                            onAction: () => _showReceiptActions(receipt),
+                            onTap: () => _openReceiptDetail(receipt),
                           ),
                         );
                       },
@@ -1484,7 +1483,7 @@ class _ReceiptsHubPageState extends State<ReceiptsHubPage> {
     try {
       final buffer = StringBuffer();
       buffer.writeln(
-        'Merchant,Total,Purchase Date,Category,Created At',
+        'Merchant,Total,Purchase Date,Category,Note,Created At',
       );
       for (final receipt in receipts) {
         buffer.writeln(
@@ -1493,6 +1492,7 @@ class _ReceiptsHubPageState extends State<ReceiptsHubPage> {
             _csvValue(_formatCents(receipt.totalCents)),
             _csvValue(receipt.purchaseDate),
             _csvValue(receipt.category),
+            _csvValue(receipt.note),
             _csvValue(receipt.createdAt),
           ].join(','),
         );
@@ -1514,92 +1514,15 @@ class _ReceiptsHubPageState extends State<ReceiptsHubPage> {
     }
   }
 
-  Future<void> _openEditReceipt(Receipt receipt) async {
+  Future<void> _openReceiptDetail(Receipt receipt) async {
     final updated = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => EditReceiptPage(receipt: receipt),
+        builder: (_) => ReceiptDetailPage(receipt: receipt),
       ),
     );
     if (updated == true && mounted) {
       _loadReceipts();
     }
-  }
-
-  Future<void> _showReceiptActions(Receipt receipt) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 42,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE2E2E2),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-              ListTile(
-                leading: const Icon(Icons.edit_outlined, color: _darkText),
-                title: const Text('Edit receipt'),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  _openEditReceipt(receipt);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                title: const Text('Delete receipt'),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  _confirmDeleteReceipt(receipt);
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _confirmDeleteReceipt(Receipt receipt) async {
-    final id = receipt.id;
-    if (id == null) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete receipt?'),
-        content: const Text('This will remove the receipt permanently.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
-            child: const Text(
-              'Delete',
-              style: TextStyle(color: Colors.white),
-            ),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    await _database.deleteReceipt(id);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Receipt deleted.')),
-    );
-    _loadReceipts();
   }
 
   Future<void> _openPaywall() async {
@@ -1634,6 +1557,292 @@ class _ReceiptsHubPageState extends State<ReceiptsHubPage> {
   }
 }
 
+class ReceiptDetailPage extends StatefulWidget {
+  final Receipt receipt;
+
+  const ReceiptDetailPage({super.key, required this.receipt});
+
+  @override
+  State<ReceiptDetailPage> createState() => _ReceiptDetailPageState();
+}
+
+class _ReceiptDetailPageState extends State<ReceiptDetailPage> {
+  bool _isDeleting = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final receipt = widget.receipt;
+    final amountText = _formatCents(receipt.totalCents);
+    final split = _splitDateTime(receipt.purchaseDate);
+    final dateText = split['date'] ?? '';
+    final timeText = split['time'] ?? '';
+    final savedAt = DateTime.tryParse(receipt.createdAt);
+    final hasImage =
+        receipt.imagePath.isNotEmpty && File(receipt.imagePath).existsSync();
+
+    return Scaffold(
+      backgroundColor: _lightBackground,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _PageHeader(
+                title: 'Receipt details',
+                onBack: () => Navigator.of(context).pop(),
+                trailing: _IconButton(
+                  icon: Icons.edit_outlined,
+                  onTap: _handleEdit,
+                ),
+              ),
+              const SizedBox(height: 16),
+              if (hasImage)
+                GestureDetector(
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ReceiptImageViewer(
+                          imagePath: receipt.imagePath,
+                        ),
+                      ),
+                    );
+                  },
+                  child: Container(
+                    height: 240,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF5F5F5),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: const Color(0xFFE0E0E0)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.06),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(18),
+                      child: Image.file(
+                        File(receipt.imagePath),
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                ),
+              if (hasImage) const SizedBox(height: 16),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFE6E6E6)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      receipt.merchant.isEmpty
+                          ? 'Untitled receipt'
+                          : receipt.merchant,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: _darkText,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      amountText == '--' ? '\$0.00' : amountText,
+                      style: const TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF45A146),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _DetailRow(
+                      label: 'Category',
+                      value: receipt.category.isEmpty ? 'Other' : receipt.category,
+                    ),
+                    _DetailRow(
+                      label: 'Purchase date',
+                      value: dateText.isEmpty ? 'Not set' : dateText,
+                    ),
+                    _DetailRow(
+                      label: 'Purchase time',
+                      value: timeText.isEmpty ? 'Not set' : timeText,
+                    ),
+                    _DetailRow(
+                      label: 'Saved',
+                      value: savedAt == null ? 'Unknown' : _formatDate(savedAt),
+                    ),
+                  ],
+                ),
+              ),
+              if (receipt.note.trim().isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFE6E6E6)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Note',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: _darkText,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        receipt.note,
+                        style: const TextStyle(color: _darkText),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _handleEdit,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _headerGreen,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: const Text(
+                    'Edit receipt',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: _isDeleting ? null : _handleDelete,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.redAccent,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    side: const BorderSide(color: Color(0xFFFFCDD2)),
+                    backgroundColor: Colors.white,
+                  ),
+                  child: _isDeleting
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Delete receipt'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _handleEdit() async {
+    final updated = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => EditReceiptPage(receipt: widget.receipt),
+      ),
+    );
+    if (updated == true && mounted) {
+      Navigator.of(context).pop(true);
+    }
+  }
+
+  Future<void> _handleDelete() async {
+    if (_isDeleting) return;
+    final id = widget.receipt.id;
+    if (id == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete receipt?'),
+        content: const Text('This will remove the receipt permanently.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    setState(() {
+      _isDeleting = true;
+    });
+    await ReceiptDatabase.instance.deleteReceipt(id);
+    if (!mounted) return;
+    Navigator.of(context).pop(true);
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _DetailRow({
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: _mutedText,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Text(
+            value,
+            style: const TextStyle(
+              color: _darkText,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class EditReceiptPage extends StatefulWidget {
   final Receipt receipt;
 
@@ -1647,20 +1856,25 @@ class _EditReceiptPageState extends State<EditReceiptPage> {
   late final TextEditingController _merchantController;
   late final TextEditingController _totalController;
   late final TextEditingController _dateController;
+  late final TextEditingController _timeController;
   late final TextEditingController _categoryController;
+  late final TextEditingController _noteController;
   bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
+    final split = _splitDateTime(widget.receipt.purchaseDate);
     _merchantController = TextEditingController(text: widget.receipt.merchant);
     _totalController = TextEditingController(
       text: widget.receipt.totalCents == null
           ? ''
           : (widget.receipt.totalCents! / 100).toStringAsFixed(2),
     );
-    _dateController = TextEditingController(text: widget.receipt.purchaseDate);
+    _dateController = TextEditingController(text: split['date'] ?? '');
+    _timeController = TextEditingController(text: split['time'] ?? '');
     _categoryController = TextEditingController(text: widget.receipt.category);
+    _noteController = TextEditingController(text: widget.receipt.note);
   }
 
   @override
@@ -1668,7 +1882,9 @@ class _EditReceiptPageState extends State<EditReceiptPage> {
     _merchantController.dispose();
     _totalController.dispose();
     _dateController.dispose();
+    _timeController.dispose();
     _categoryController.dispose();
+    _noteController.dispose();
     super.dispose();
   }
 
@@ -1764,6 +1980,7 @@ class _EditReceiptPageState extends State<EditReceiptPage> {
                   label: 'Merchant',
                   controller: _merchantController,
                   icon: Icons.storefront,
+                  iconColor: _headerGreen,
                 ),
                 const SizedBox(height: 12),
                 _InputField(
@@ -1771,26 +1988,69 @@ class _EditReceiptPageState extends State<EditReceiptPage> {
                   controller: _totalController,
                   keyboardType: TextInputType.number,
                   icon: Icons.payments_outlined,
+                  iconColor: _headerGreen,
                 ),
                 const SizedBox(height: 12),
-                _InputField(
-                  label: 'Purchase date/time',
-                  controller: _dateController,
-                  icon: Icons.event,
+                Row(
+                  children: [
+                    Expanded(
+                      child: _InputField(
+                        label: 'Purchase date',
+                        controller: _dateController,
+                        icon: Icons.calendar_today_outlined,
+                        iconColor: _headerGreen,
+                        readOnly: true,
+                        onTap: _pickDate,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _InputField(
+                        label: 'Purchase time',
+                        controller: _timeController,
+                        icon: Icons.access_time,
+                        iconColor: _headerGreen,
+                        readOnly: true,
+                        onTap: _pickTime,
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 12),
                 _InputField(
                   label: 'Category',
                   controller: _categoryController,
                   icon: Icons.sell_outlined,
+                  iconColor: _headerGreen,
                 ),
                 const SizedBox(height: 16),
-                TextButton(
-                  onPressed: _isSaving ? null : _handleDelete,
-                  style: TextButton.styleFrom(
-                    foregroundColor: Colors.redAccent,
+                _InputField(
+                  label: 'Note (optional)',
+                  controller: _noteController,
+                  icon: Icons.edit_note,
+                  iconColor: _headerGreen,
+                  maxLines: 3,
+                ),
+                const SizedBox(height: 16),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: InkWell(
+                    onTap: _isSaving ? null : _handleDelete,
+                    borderRadius: BorderRadius.circular(24),
+                    child: Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFFF1D6D9)),
+                      ),
+                      child: const Icon(
+                        Icons.delete_outline,
+                        color: Colors.redAccent,
+                      ),
+                    ),
                   ),
-                  child: const Text('Delete receipt'),
                 ),
                 const SizedBox(height: 60),
               ],
@@ -1809,15 +2069,20 @@ class _EditReceiptPageState extends State<EditReceiptPage> {
     try {
       final merchant = _merchantController.text.trim();
       final totalText = _totalController.text.trim();
-      final purchaseDate = _dateController.text.trim();
+      final purchaseDate = _combineDateTime(
+        _dateController.text,
+        _timeController.text,
+      );
       final categoryText = _categoryController.text.trim();
       final category = categoryText.isEmpty ? 'Other' : categoryText;
       final totalCents = _parseTotalCents(totalText);
+      final note = _noteController.text.trim();
       final updated = widget.receipt.copyWith(
         merchant: merchant,
         totalCents: totalCents,
         purchaseDate: purchaseDate,
         category: category,
+        note: note,
       );
       final rows = await ReceiptDatabase.instance.updateReceipt(updated);
       if (!mounted) return;
@@ -1870,6 +2135,26 @@ class _EditReceiptPageState extends State<EditReceiptPage> {
     await ReceiptDatabase.instance.deleteReceipt(id);
     if (!mounted) return;
     Navigator.of(context).pop(true);
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (picked == null) return;
+    _dateController.text = _formatDate(picked);
+  }
+
+  Future<void> _pickTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+    );
+    if (picked == null) return;
+    _timeController.text = _formatTimeOfDay(context, picked);
   }
 }
 
@@ -2873,16 +3158,21 @@ class _ReceiptEditorPageState extends State<ReceiptEditorPage> {
   late final TextEditingController _merchantController;
   late final TextEditingController _totalController;
   late final TextEditingController _dateController;
+  late final TextEditingController _timeController;
   late final TextEditingController _categoryController;
+  late final TextEditingController _noteController;
   bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
+    final split = _splitDateTime(widget.draft.date);
     _merchantController = TextEditingController(text: widget.draft.merchant);
     _totalController = TextEditingController(text: widget.draft.total);
-    _dateController = TextEditingController(text: widget.draft.date);
+    _dateController = TextEditingController(text: split['date'] ?? '');
+    _timeController = TextEditingController(text: split['time'] ?? '');
     _categoryController = TextEditingController(text: widget.draft.category);
+    _noteController = TextEditingController();
   }
 
   @override
@@ -2890,7 +3180,9 @@ class _ReceiptEditorPageState extends State<ReceiptEditorPage> {
     _merchantController.dispose();
     _totalController.dispose();
     _dateController.dispose();
+    _timeController.dispose();
     _categoryController.dispose();
+    _noteController.dispose();
     super.dispose();
   }
 
@@ -3057,16 +3349,41 @@ class _ReceiptEditorPageState extends State<ReceiptEditorPage> {
                   icon: Icons.payments_outlined,
                 ),
                 const SizedBox(height: 12),
-                _InputField(
-                  label: 'Purchase date/time',
-                  controller: _dateController,
-                  icon: Icons.event,
+                Row(
+                  children: [
+                    Expanded(
+                      child: _InputField(
+                        label: 'Purchase date',
+                        controller: _dateController,
+                        icon: Icons.calendar_today_outlined,
+                        readOnly: true,
+                        onTap: _pickDate,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _InputField(
+                        label: 'Purchase time',
+                        controller: _timeController,
+                        icon: Icons.access_time,
+                        readOnly: true,
+                        onTap: _pickTime,
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 12),
                 _InputField(
                   label: 'Category',
                   controller: _categoryController,
                   icon: Icons.sell_outlined,
+                ),
+                const SizedBox(height: 12),
+                _InputField(
+                  label: 'Note (optional)',
+                  controller: _noteController,
+                  icon: Icons.edit_note,
+                  maxLines: 3,
                 ),
                 if (confidence < 0.2)
                   Padding(
@@ -3110,10 +3427,14 @@ class _ReceiptEditorPageState extends State<ReceiptEditorPage> {
     try {
       final merchant = _merchantController.text.trim();
       final totalText = _totalController.text.trim();
-      final purchaseDate = _dateController.text.trim();
+      final purchaseDate = _combineDateTime(
+        _dateController.text,
+        _timeController.text,
+      );
       final categoryText = _categoryController.text.trim();
       final category = categoryText.isEmpty ? 'Other' : categoryText;
       final totalCents = _parseTotalCents(totalText);
+      final note = _noteController.text.trim();
       final receipt = Receipt(
         merchant: merchant,
         totalCents: totalCents,
@@ -3121,6 +3442,7 @@ class _ReceiptEditorPageState extends State<ReceiptEditorPage> {
         category: category,
         imagePath: widget.draft.imagePath,
         rawText: widget.draft.rawText,
+        note: note,
         createdAt: DateTime.now().toIso8601String(),
       );
       final database = ReceiptDatabase.instance;
@@ -3189,6 +3511,27 @@ class _ReceiptEditorPageState extends State<ReceiptEditorPage> {
       }
     }
   }
+
+  Future<void> _pickDate() async {
+    final initial = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (picked == null) return;
+    _dateController.text = _formatDate(picked);
+  }
+
+  Future<void> _pickTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+    );
+    if (picked == null) return;
+    _timeController.text = _formatTimeOfDay(context, picked);
+  }
 }
 
 class ManualEntryPage extends StatefulWidget {
@@ -3204,7 +3547,9 @@ class _ManualEntryPageState extends State<ManualEntryPage> {
   final TextEditingController _merchantController = TextEditingController();
   final TextEditingController _totalController = TextEditingController();
   final TextEditingController _dateController = TextEditingController();
+  final TextEditingController _timeController = TextEditingController();
   final TextEditingController _categoryController = TextEditingController();
+  final TextEditingController _noteController = TextEditingController();
   bool _isSaving = false;
 
   @override
@@ -3212,7 +3557,9 @@ class _ManualEntryPageState extends State<ManualEntryPage> {
     _merchantController.dispose();
     _totalController.dispose();
     _dateController.dispose();
+    _timeController.dispose();
     _categoryController.dispose();
+    _noteController.dispose();
     super.dispose();
   }
 
@@ -3284,16 +3631,41 @@ class _ManualEntryPageState extends State<ManualEntryPage> {
                   icon: Icons.payments_outlined,
                 ),
                 const SizedBox(height: 12),
-                _InputField(
-                  label: 'Purchase date/time',
-                  controller: _dateController,
-                  icon: Icons.event,
+                Row(
+                  children: [
+                    Expanded(
+                      child: _InputField(
+                        label: 'Purchase date',
+                        controller: _dateController,
+                        icon: Icons.calendar_today_outlined,
+                        readOnly: true,
+                        onTap: _pickDate,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _InputField(
+                        label: 'Purchase time',
+                        controller: _timeController,
+                        icon: Icons.access_time,
+                        readOnly: true,
+                        onTap: _pickTime,
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 12),
                 _InputField(
                   label: 'Category',
                   controller: _categoryController,
                   icon: Icons.sell_outlined,
+                ),
+                const SizedBox(height: 12),
+                _InputField(
+                  label: 'Note (optional)',
+                  controller: _noteController,
+                  icon: Icons.edit_note,
+                  maxLines: 3,
                 ),
                 const SizedBox(height: 20),
                 SizedBox(
@@ -3338,10 +3710,14 @@ class _ManualEntryPageState extends State<ManualEntryPage> {
     try {
       final merchant = _merchantController.text.trim();
       final totalText = _totalController.text.trim();
-      final purchaseDate = _dateController.text.trim();
+      final purchaseDate = _combineDateTime(
+        _dateController.text,
+        _timeController.text,
+      );
       final categoryText = _categoryController.text.trim();
       final category = categoryText.isEmpty ? 'Other' : categoryText;
       final totalCents = _parseTotalCents(totalText);
+      final note = _noteController.text.trim();
       final receipt = Receipt(
         merchant: merchant,
         totalCents: totalCents,
@@ -3349,6 +3725,7 @@ class _ManualEntryPageState extends State<ManualEntryPage> {
         category: category,
         imagePath: '',
         rawText: '',
+        note: note,
         createdAt: DateTime.now().toIso8601String(),
       );
       await ReceiptDatabase.instance.insertReceipt(receipt);
@@ -3370,6 +3747,26 @@ class _ManualEntryPageState extends State<ManualEntryPage> {
       }
     }
   }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (picked == null) return;
+    _dateController.text = _formatDate(picked);
+  }
+
+  Future<void> _pickTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+    );
+    if (picked == null) return;
+    _timeController.text = _formatTimeOfDay(context, picked);
+  }
 }
 
 class _InputField extends StatelessWidget {
@@ -3377,12 +3774,20 @@ class _InputField extends StatelessWidget {
   final TextEditingController controller;
   final TextInputType keyboardType;
   final IconData? icon;
+  final Color? iconColor;
+  final VoidCallback? onTap;
+  final bool readOnly;
+  final int maxLines;
 
   const _InputField({
     required this.label,
     required this.controller,
     this.keyboardType = TextInputType.text,
     this.icon,
+    this.iconColor,
+    this.onTap,
+    this.readOnly = false,
+    this.maxLines = 1,
   });
 
   @override
@@ -3402,6 +3807,9 @@ class _InputField extends StatelessWidget {
         TextField(
           controller: controller,
           keyboardType: keyboardType,
+          readOnly: readOnly,
+          onTap: onTap,
+          maxLines: maxLines,
           style: const TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w600,
@@ -3414,7 +3822,7 @@ class _InputField extends StatelessWidget {
                 ? null
                 : Icon(
                     icon,
-                    color: const Color(0xFF9A9A9A),
+                    color: iconColor ?? const Color(0xFF9A9A9A),
                     size: 20,
                   ),
             border: OutlineInputBorder(
@@ -3618,6 +4026,36 @@ String _formatDate(DateTime date) {
   ];
   final month = months[date.month - 1];
   return '$month ${date.day}, ${date.year}';
+}
+
+Map<String, String> _splitDateTime(String value) {
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) {
+    return {'date': '', 'time': ''};
+  }
+  final parts = trimmed.split('•');
+  if (parts.length == 1) {
+    return {'date': trimmed, 'time': ''};
+  }
+  return {
+    'date': parts.first.trim(),
+    'time': parts.sublist(1).join('•').trim(),
+  };
+}
+
+String _combineDateTime(String date, String time) {
+  final trimmedDate = date.trim();
+  final trimmedTime = time.trim();
+  if (trimmedDate.isEmpty) return '';
+  if (trimmedTime.isEmpty) return trimmedDate;
+  return '$trimmedDate • $trimmedTime';
+}
+
+String _formatTimeOfDay(BuildContext context, TimeOfDay time) {
+  return MaterialLocalizations.of(context).formatTimeOfDay(
+    time,
+    alwaysUse24HourFormat: false,
+  );
 }
 
 String _csvValue(String value) {

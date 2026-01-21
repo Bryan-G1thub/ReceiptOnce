@@ -6,6 +6,7 @@ class Receipt {
   final String category;
   final String imagePath;
   final String rawText;
+  final String note;
   final String createdAt;
 
   const Receipt({
@@ -16,6 +17,7 @@ class Receipt {
     required this.category,
     required this.imagePath,
     required this.rawText,
+    required this.note,
     required this.createdAt,
   });
 
@@ -28,6 +30,7 @@ class Receipt {
       'category': category,
       'image_path': imagePath,
       'raw_text': rawText,
+      'note': note,
       'created_at': createdAt,
     };
   }
@@ -40,6 +43,7 @@ class Receipt {
     String? category,
     String? imagePath,
     String? rawText,
+    String? note,
     String? createdAt,
   }) {
     return Receipt(
@@ -50,6 +54,7 @@ class Receipt {
       category: category ?? this.category,
       imagePath: imagePath ?? this.imagePath,
       rawText: rawText ?? this.rawText,
+      note: note ?? this.note,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -63,6 +68,7 @@ class Receipt {
       category: (map['category'] as String?) ?? 'Other',
       imagePath: (map['image_path'] as String?) ?? '',
       rawText: (map['raw_text'] as String?) ?? '',
+      note: (map['note'] as String?) ?? '',
       createdAt: (map['created_at'] as String?) ?? '',
     );
   }
