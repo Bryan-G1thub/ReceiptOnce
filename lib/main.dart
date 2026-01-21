@@ -977,236 +977,248 @@ class _CameraCapturePageState extends State<CameraCapturePage> {
 
   @override
   Widget build(BuildContext context) {
-    final previewHeight = MediaQuery.of(context).size.height * 0.68;
+    // Reserve space for controls at the bottom by keeping the preview
+    // a bit smaller than the full height. The whole page is scrollable
+    // so we avoid bottom overflow on shorter screens.
+    final screenHeight = MediaQuery.of(context).size.height;
+    final previewHeight = screenHeight * 0.6;
     return Scaffold(
       backgroundColor: _lightBackground,
       body: SafeArea(
         bottom: true,
         child: Stack(
           children: [
-            Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                  child: Row(
-                    children: [
-                      _IconButton(
-                        icon: Icons.arrow_back,
-                        onTap: () => Navigator.of(context).pop(),
-                      ),
-                      const SizedBox(width: 12),
-                      const Text(
-                        'Scan receipt',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: _darkText,
+            SingleChildScrollView(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                    child: Row(
+                      children: [
+                        _IconButton(
+                          icon: Icons.arrow_back,
+                          onTap: () => Navigator.of(context).pop(),
                         ),
-                      ),
-                      const Spacer(),
-                      _IconButton(
-                        icon: Icons.help_outline,
-                        onTap: _showTipsDialog,
-                        iconColor: _headerGreen,
-                      ),
-                    ],
-                  ),
-                ),
-                SizedBox(
-                  height: previewHeight,
-                  child: Container(
-                    width: double.infinity,
-                    margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEDEDED),
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: const Color(0xFFD6D6D6)),
+                        const SizedBox(width: 12),
+                        const Text(
+                          'Scan receipt',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: _darkText,
+                          ),
+                        ),
+                        const Spacer(),
+                        _IconButton(
+                          icon: Icons.help_outline,
+                          onTap: _showTipsDialog,
+                          iconColor: _headerGreen,
+                        ),
+                      ],
                     ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(18),
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          _buildPreview(),
-                          Positioned(
-                            bottom: 16,
-                            left: 0,
-                            right: 0,
-                            child: Center(
-                              child: _selectedImages.isEmpty
-                                  ? GestureDetector(
-                                      onTap:
-                                          _cameraReady ? _handleCapture : null,
-                                      child: Container(
-                                        width: 70,
-                                        height: 70,
-                                        decoration: BoxDecoration(
-                                          color: _headerGreen.withOpacity(0.18),
-                                          shape: BoxShape.circle,
-                                          border: Border.all(
+                  ),
+                  SizedBox(
+                    height: previewHeight,
+                    child: Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEDEDED),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: const Color(0xFFD6D6D6)),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(18),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            _buildPreview(),
+                            Positioned(
+                              bottom: 16,
+                              left: 0,
+                              right: 0,
+                              child: Center(
+                                child: _selectedImages.isEmpty
+                                    ? GestureDetector(
+                                        onTap:
+                                            _cameraReady ? _handleCapture : null,
+                                        child: Container(
+                                          width: 70,
+                                          height: 70,
+                                          decoration: BoxDecoration(
                                             color:
-                                                _headerGreen.withOpacity(0.6),
-                                            width: 2,
+                                                _headerGreen.withOpacity(0.18),
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color:
+                                                  _headerGreen.withOpacity(0.6),
+                                              width: 2,
+                                            ),
                                           ),
-                                        ),
-                                        child: Center(
-                                          child: Container(
-                                            width: 52,
-                                            height: 52,
-                                            decoration: BoxDecoration(
-                                              color: _headerGreen,
-                                              shape: BoxShape.circle,
+                                          child: Center(
+                                            child: Container(
+                                              width: 52,
+                                              height: 52,
+                                              decoration: BoxDecoration(
+                                                color: _headerGreen,
+                                                shape: BoxShape.circle,
+                                              ),
                                             ),
                                           ),
                                         ),
-                                      ),
-                                    )
-                                  : Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 6,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.black.withOpacity(0.6),
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Text(
-                                        '${_selectedImages.length} photo${_selectedImages.length == 1 ? '' : 's'} selected',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
+                                      )
+                                    : Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 6,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black.withOpacity(0.6),
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                        child: Text(
+                                          '${_selectedImages.length} photo${_selectedImages.length == 1 ? '' : 's'} selected',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                if (_selectedImages.isNotEmpty)
-                  SizedBox(
-                    height: 64,
-                    child: ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-                      scrollDirection: Axis.horizontal,
-                      itemBuilder: (context, index) {
-                        final image = _selectedImages[index];
-                        final isActive = index == _activeImageIndex;
-                        return GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              _activeImageIndex = index;
-                            });
-                          },
-                          child: Container(
-                            width: 64,
-                            height: 64,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: isActive
-                                    ? _headerGreen
-                                    : const Color(0xFFD0D0D0),
-                                width: isActive ? 2 : 1,
                               ),
-                              image: DecorationImage(
-                                image: FileImage(File(image.path)),
-                                fit: BoxFit.cover,
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                      separatorBuilder: (_, __) => const SizedBox(width: 10),
-                      itemCount: _selectedImages.length,
-                    ),
-                  ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
-                  child: _selectedImages.isEmpty
-                      ? Row(
-                          children: [
-                            Expanded(
-                              child: _ActionCard(
-                                icon: Icons.photo_library_outlined,
-                                label: 'Import photo',
-                                onTap: _handleImportPhoto,
-                                dark: true,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _ActionCard(
-                                icon: Icons.edit_outlined,
-                                label: 'Enter manually',
-                                onTap: () {
-                                  Navigator.of(context).pushReplacement(
-                                    MaterialPageRoute(
-                                      builder: (_) => const ManualEntryPage(),
-                                    ),
-                                  );
-                                },
-                                dark: true,
-                              ),
-                            ),
-                          ],
-                        )
-                      : Column(
-                          children: [
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton(
-                                onPressed: _handleUsePhoto,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: _headerGreen,
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 14),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                ),
-                                child: Text(
-                                  'Scan ${_selectedImages.length} photo${_selectedImages.length == 1 ? '' : 's'}',
-                                  style: const TextStyle(color: Colors.white),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _ActionCard(
-                                    icon: Icons.add_photo_alternate_outlined,
-                                    label: 'Add photo',
-                                    onTap: _handleImportPhoto,
-                                    dark: true,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: _ActionCard(
-                                    icon: Icons.edit_outlined,
-                                    label: 'Enter manually',
-                                    onTap: () {
-                                      Navigator.of(context).pushReplacement(
-                                        MaterialPageRoute(
-                                          builder: (_) =>
-                                              const ManualEntryPage(),
-                                        ),
-                                      );
-                                    },
-                                    dark: true,
-                                  ),
-                                ),
-                              ],
                             ),
                           ],
                         ),
-                ),
-              ],
+                      ),
+                    ),
+                  ),
+                  if (_selectedImages.isNotEmpty)
+                    SizedBox(
+                      height: 64,
+                      child: ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                        scrollDirection: Axis.horizontal,
+                        itemBuilder: (context, index) {
+                          final image = _selectedImages[index];
+                          final isActive = index == _activeImageIndex;
+                          return GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _activeImageIndex = index;
+                              });
+                            },
+                            child: Container(
+                              width: 64,
+                              height: 64,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: isActive
+                                      ? _headerGreen
+                                      : const Color(0xFFD0D0D0),
+                                  width: isActive ? 2 : 1,
+                                ),
+                                image: DecorationImage(
+                                  image: FileImage(File(image.path)),
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                        separatorBuilder: (_, __) => const SizedBox(width: 10),
+                        itemCount: _selectedImages.length,
+                      ),
+                    ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
+                    child: _selectedImages.isEmpty
+                        ? Row(
+                            children: [
+                              Expanded(
+                                child: _ActionCard(
+                                  icon: Icons.photo_library_outlined,
+                                  label: 'Import photo',
+                                  onTap: _handleImportPhoto,
+                                  dark: true,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _ActionCard(
+                                  icon: Icons.edit_outlined,
+                                  label: 'Enter manually',
+                                  onTap: () {
+                                    Navigator.of(context).pushReplacement(
+                                      MaterialPageRoute(
+                                        builder: (_) =>
+                                            const ManualEntryPage(),
+                                      ),
+                                    );
+                                  },
+                                  dark: true,
+                                ),
+                              ),
+                            ],
+                          )
+                        : Column(
+                            children: [
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton(
+                                  onPressed: _handleUsePhoto,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: _headerGreen,
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 14),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    'Scan ${_selectedImages.length} photo${_selectedImages.length == 1 ? '' : 's'}',
+                                    style:
+                                        const TextStyle(color: Colors.white),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _ActionCard(
+                                      icon: Icons.add_photo_alternate_outlined,
+                                      label: 'Add photo',
+                                      onTap: _handleImportPhoto,
+                                      dark: true,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: _ActionCard(
+                                      icon: Icons.edit_outlined,
+                                      label: 'Enter manually',
+                                      onTap: () {
+                                        Navigator.of(context).pushReplacement(
+                                          MaterialPageRoute(
+                                            builder: (_) =>
+                                                const ManualEntryPage(),
+                                          ),
+                                        );
+                                      },
+                                      dark: true,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                  ),
+                ],
+              ),
             ),
             if (_isProcessing)
               Container(
