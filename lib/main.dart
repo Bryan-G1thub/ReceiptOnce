@@ -34,7 +34,7 @@ class ReceiptOnceApp extends StatelessWidget {
         scaffoldBackgroundColor: _lightBackground,
         useMaterial3: true,
       ),
-      home: const HomeScreen(),
+      home: const MainShell(),
       debugShowCheckedModeBanner: false,
     );
   }
@@ -45,8 +45,192 @@ const Color _lightBackground = Color(0xFFF4F5F7);
 const Color _darkText = Color(0xFF232323);
 const Color _mutedText = Color(0xFF7B7B7B);
 
+class MainShellController {
+  static final ValueNotifier<int> tabIndex = ValueNotifier<int>(0);
+  static final ValueNotifier<int> refreshTick = ValueNotifier<int>(0);
+
+  static void setTab(int index) {
+    tabIndex.value = index;
+  }
+
+  static void notifyDataChanged() {
+    refreshTick.value++;
+  }
+}
+
+class MainShell extends StatefulWidget {
+  const MainShell({super.key});
+
+  @override
+  State<MainShell> createState() => _MainShellState();
+}
+
+class _MainShellState extends State<MainShell> {
+  final GlobalKey<_HomeScreenState> _homeKey = GlobalKey<_HomeScreenState>();
+  final GlobalKey<_ReceiptsHubPageState> _receiptsKey =
+      GlobalKey<_ReceiptsHubPageState>();
+  final GlobalKey<_MenuPageState> _menuKey = GlobalKey<_MenuPageState>();
+  int _activeIndex = 0;
+  late final VoidCallback _tabListener;
+
+  Future<void> _openCamera() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const CameraCapturePage()),
+    );
+    _homeKey.currentState?.refresh();
+    _receiptsKey.currentState?.refresh();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _tabListener = () {
+      if (!mounted) return;
+      setState(() {
+        _activeIndex = MainShellController.tabIndex.value;
+      });
+    };
+    MainShellController.tabIndex.addListener(_tabListener);
+  }
+
+  @override
+  void dispose() {
+    MainShellController.tabIndex.removeListener(_tabListener);
+    super.dispose();
+  }
+
+  void _goHome() {
+    MainShellController.setTab(0);
+  }
+
+  void _goReceipts() {
+    MainShellController.setTab(1);
+  }
+
+  void _goMenu() {
+    MainShellController.setTab(2);
+  }
+
+  void _focusSearch() {
+    MainShellController.setTab(0);
+    _homeKey.currentState?.focusSearch();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: IndexedStack(
+        index: _activeIndex,
+        children: [
+          HomeScreen(
+            key: _homeKey,
+            onOpenReceipts: _goReceipts,
+          ),
+          ReceiptsHubPage(
+            key: _receiptsKey,
+            showBack: false,
+          ),
+          MenuPage(
+            key: _menuKey,
+            showBack: false,
+            onOpenReceipts: _goReceipts,
+          ),
+        ],
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          height: 78,
+          decoration: const BoxDecoration(
+            color: Color(0xFFF7F7F7),
+            border: Border(
+              top: BorderSide(color: Color(0xFFE3E3E3)),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Color(0x14000000),
+                blurRadius: 12,
+                offset: Offset(0, -3),
+              ),
+            ],
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _NavItem(
+                    icon: Icons.home_filled,
+                    label: 'Home',
+                    active: _activeIndex == 0,
+                    onTap: _goHome,
+                  ),
+                  _NavItem(
+                    icon: Icons.search,
+                    label: 'Search',
+                    onTap: _focusSearch,
+                  ),
+                  const SizedBox(width: 56),
+                  _NavItem(
+                    icon: Icons.receipt_long,
+                    label: 'Receipts',
+                    active: _activeIndex == 1,
+                    onTap: _goReceipts,
+                  ),
+                  _NavItem(
+                    icon: Icons.menu,
+                    label: 'Menu',
+                    active: _activeIndex == 2,
+                    onTap: _goMenu,
+                  ),
+                ],
+              ),
+              GestureDetector(
+                onTap: _openCamera,
+                child: Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: _headerGreen,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.18),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                      ),
+                      child: const Icon(
+                        Icons.add,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final VoidCallback? onOpenReceipts;
+
+  const HomeScreen({super.key, this.onOpenReceipts});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -63,18 +247,80 @@ class _HomeScreenState extends State<HomeScreen> {
   String _topCategory = 'Other';
   int _scansLeft = 10;
   bool _isPro = false;
+  late final VoidCallback _dataListener;
 
   @override
   void dispose() {
     _searchController.dispose();
     _searchFocus.dispose();
+    MainShellController.refreshTick.removeListener(_dataListener);
     super.dispose();
   }
 
   @override
   void initState() {
     super.initState();
+    _dataListener = () {
+      if (mounted) {
+        _loadHomeData();
+      }
+    };
+    MainShellController.refreshTick.addListener(_dataListener);
     _loadHomeData();
+  }
+
+  Future<void> refresh() async {
+    await _loadHomeData();
+  }
+
+  void focusSearch() {
+    FocusScope.of(context).requestFocus(_searchFocus);
+  }
+
+  Future<void> _openEditReceipt(Receipt receipt) async {
+    final updated = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => EditReceiptPage(receipt: receipt),
+      ),
+    );
+    if (updated == true && mounted) {
+      await _loadHomeData();
+      MainShellController.notifyDataChanged();
+    }
+  }
+
+  Future<void> _confirmDeleteReceipt(Receipt receipt) async {
+    final id = receipt.id;
+    if (id == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete receipt?'),
+        content: const Text('This will remove the receipt permanently.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _database.deleteReceipt(id);
+    if (!mounted) return;
+    await _loadHomeData();
+    MainShellController.notifyDataChanged();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Receipt deleted.')),
+    );
   }
 
   Future<void> _loadHomeData() async {
@@ -179,13 +425,16 @@ class _HomeScreenState extends State<HomeScreen> {
                         GestureDetector(
                         onTap: () async {
                           FocusScope.of(context).unfocus();
-                          await Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const ReceiptsHubPage(),
-                            ),
-                          );
-                          await _loadHomeData();
-                          _searchFocus.unfocus();
+                          if (widget.onOpenReceipts != null) {
+                            widget.onOpenReceipts!();
+                          } else {
+                            await Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const ReceiptsHubPage(),
+                              ),
+                            );
+                            await _loadHomeData();
+                          }
                         },
                           child: Container(
                             width: 32,
@@ -226,126 +475,22 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: _EmptyHomeState(),
                       )
                     else
-                      ..._recentReceipts
-                          .map((item) => _ReceiptDataListItem(receipt: item)),
+                      ..._recentReceipts.map(
+                        (item) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _ReceiptCard(
+                            receipt: item,
+                            onEdit: () => _openEditReceipt(item),
+                            onDelete: () => _confirmDeleteReceipt(item),
+                          ),
+                        ),
+                      ),
                     const SizedBox(height: 90),
                   ],
                 ),
               ),
             ],
               ),
-            ),
-          ),
-        ),
-        bottomNavigationBar: SafeArea(
-          top: false,
-          child: Container(
-            height: 78,
-            decoration: const BoxDecoration(
-              color: Color(0xFFF7F7F7),
-              border: Border(
-                top: BorderSide(color: Color(0xFFE3E3E3)),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Color(0x14000000),
-                  blurRadius: 12,
-                  offset: Offset(0, -3),
-                ),
-              ],
-            ),
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    const _NavItem(
-                      icon: Icons.home_filled,
-                      label: 'Home',
-                      active: true,
-                    ),
-                    _NavItem(
-                      icon: Icons.search,
-                      label: 'Search',
-                      onTap: () {
-                        FocusScope.of(context).requestFocus(_searchFocus);
-                      },
-                    ),
-                    const SizedBox(width: 56),
-                    _NavItem(
-                      icon: Icons.receipt_long,
-                      label: 'Receipts',
-                      onTap: () async {
-                        FocusScope.of(context).unfocus();
-                        await Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const ReceiptsHubPage(),
-                          ),
-                        );
-                        await _loadHomeData();
-                        _searchFocus.unfocus();
-                      },
-                    ),
-                    _NavItem(
-                      icon: Icons.menu,
-                      label: 'Menu',
-                      onTap: () async {
-                        FocusScope.of(context).unfocus();
-                        await Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const MenuPage(),
-                          ),
-                        );
-                        await _loadHomeData();
-                        _searchFocus.unfocus();
-                      },
-                    ),
-                  ],
-                ),
-                GestureDetector(
-                  onTap: () async {
-                    FocusScope.of(context).unfocus();
-                    await Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const CameraCapturePage(),
-                      ),
-                    );
-                    await _loadHomeData();
-                    _searchFocus.unfocus();
-                  },
-                  child: Container(
-                    width: 56,
-                    height: 56,
-                    decoration: BoxDecoration(
-                      color: _headerGreen,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.18),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Center(
-                      child: Container(
-                        width: 28,
-                        height: 28,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
-                        ),
-                        child: const Icon(
-                          Icons.add,
-                          color: Colors.white,
-                          size: 18,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
             ),
           ),
         ),
@@ -1328,7 +1473,9 @@ class _EmptyHomeState extends StatelessWidget {
 }
 
 class ReceiptsHubPage extends StatefulWidget {
-  const ReceiptsHubPage({super.key});
+  final bool showBack;
+
+  const ReceiptsHubPage({super.key, this.showBack = true});
 
   @override
   State<ReceiptsHubPage> createState() => _ReceiptsHubPageState();
@@ -1358,17 +1505,29 @@ class _ReceiptsHubPageState extends State<ReceiptsHubPage> {
   bool _isPro = false;
   int _scansLeft = 10;
   int _searchRequest = 0;
+  late final VoidCallback _dataListener;
 
   @override
   void initState() {
     super.initState();
+    _dataListener = () {
+      if (mounted) {
+        _loadReceipts();
+      }
+    };
+    MainShellController.refreshTick.addListener(_dataListener);
     _searchController.addListener(_applyFilters);
     _loadReceipts();
+  }
+
+  Future<void> refresh() async {
+    await _loadReceipts();
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    MainShellController.refreshTick.removeListener(_dataListener);
     super.dispose();
   }
 
@@ -1442,7 +1601,9 @@ class _ReceiptsHubPageState extends State<ReceiptsHubPage> {
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                   child: _PageHeader(
                     title: 'Receipts',
-                    onBack: () => Navigator.of(context).pop(),
+                    onBack:
+                        widget.showBack ? () => Navigator.of(context).pop() : null,
+                    showBack: widget.showBack,
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -1610,6 +1771,7 @@ class _ReceiptsHubPageState extends State<ReceiptsHubPage> {
     );
     if (updated == true && mounted) {
       _loadReceipts();
+      MainShellController.notifyDataChanged();
     }
   }
 
@@ -1644,6 +1806,7 @@ class _ReceiptsHubPageState extends State<ReceiptsHubPage> {
       const SnackBar(content: Text('Receipt deleted.')),
     );
     _loadReceipts();
+    MainShellController.notifyDataChanged();
   }
 
   Future<void> _openPaywall() async {
@@ -1924,6 +2087,7 @@ class _ReceiptDetailPageState extends State<ReceiptDetailPage> {
     await ReceiptDatabase.instance.deleteReceipt(id);
     if (!mounted) return;
     Navigator.of(context).pop(true);
+    MainShellController.notifyDataChanged();
   }
 }
 
@@ -2214,6 +2378,7 @@ class _EditReceiptPageState extends State<EditReceiptPage> {
         return;
       }
       Navigator.of(context).pop(true);
+      MainShellController.notifyDataChanged();
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2529,7 +2694,14 @@ class _PaywallPageState extends State<PaywallPage> {
 }
 
 class MenuPage extends StatefulWidget {
-  const MenuPage({super.key});
+  final bool showBack;
+  final VoidCallback? onOpenReceipts;
+
+  const MenuPage({
+    super.key,
+    this.showBack = true,
+    this.onOpenReceipts,
+  });
 
   @override
   State<MenuPage> createState() => _MenuPageState();
@@ -2539,11 +2711,28 @@ class _MenuPageState extends State<MenuPage> {
   bool _loading = true;
   bool _isPro = false;
   int _scanCount = 0;
+  late final VoidCallback _dataListener;
 
   @override
   void initState() {
     super.initState();
+    _dataListener = () {
+      if (mounted) {
+        _loadMenuData();
+      }
+    };
+    MainShellController.refreshTick.addListener(_dataListener);
     _loadMenuData();
+  }
+
+  @override
+  void dispose() {
+    MainShellController.refreshTick.removeListener(_dataListener);
+    super.dispose();
+  }
+
+  Future<void> refresh() async {
+    await _loadMenuData();
   }
 
   Future<void> _loadMenuData() async {
@@ -2570,6 +2759,10 @@ class _MenuPageState extends State<MenuPage> {
   }
 
   Future<void> _openReceipts() async {
+    if (widget.onOpenReceipts != null) {
+      widget.onOpenReceipts!();
+      return;
+    }
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const ReceiptsHubPage()),
     );
@@ -2588,7 +2781,8 @@ class _MenuPageState extends State<MenuPage> {
             children: [
               _PageHeader(
                 title: 'Menu',
-                onBack: () => Navigator.of(context).pop(),
+                onBack: widget.showBack ? () => Navigator.of(context).pop() : null,
+                showBack: widget.showBack,
               ),
               const SizedBox(height: 20),
               if (_loading)
@@ -3614,11 +3808,10 @@ class _ReceiptEditorPageState extends State<ReceiptEditorPage> {
       if (!isPro) {
         await database.incrementScanCount();
       }
+      MainShellController.notifyDataChanged();
       if (!mounted) return;
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const ReceiptsHubPage()),
-        (route) => route.isFirst,
-      );
+      MainShellController.setTab(1);
+      Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -3850,11 +4043,10 @@ class _ManualEntryPageState extends State<ManualEntryPage> {
         createdAt: DateTime.now().toIso8601String(),
       );
       await ReceiptDatabase.instance.insertReceipt(receipt);
+      MainShellController.notifyDataChanged();
       if (!mounted) return;
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const ReceiptsHubPage()),
-        (route) => route.isFirst,
-      );
+      MainShellController.setTab(1);
+      Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -4046,23 +4238,31 @@ class _ActionCard extends StatelessWidget {
 
 class _PageHeader extends StatelessWidget {
   final String title;
-  final VoidCallback onBack;
+  final VoidCallback? onBack;
   final Widget? trailing;
+  final bool showBack;
 
   const _PageHeader({
     required this.title,
-    required this.onBack,
+    this.onBack,
     this.trailing,
+    this.showBack = true,
   });
 
   @override
   Widget build(BuildContext context) {
+    if (showBack && onBack == null) {
+      throw ArgumentError('onBack is required when showBack is true.');
+    }
     return Row(
       children: [
-        _IconButton(
-          icon: Icons.arrow_back,
-          onTap: onBack,
-        ),
+        if (showBack)
+          _IconButton(
+            icon: Icons.arrow_back,
+            onTap: onBack!,
+          )
+        else
+          const SizedBox(width: 36, height: 36),
         const SizedBox(width: 12),
         Text(
           title,
