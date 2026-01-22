@@ -4543,19 +4543,21 @@ class OcrService {
 
   String _guessMerchant(List<_OcrLine> lines) {
     final topLines = lines.where((line) => line.positionRatio <= 0.15).toList();
-    final candidates = _filterMerchantCandidates(topLines.isEmpty ? lines : topLines);
+    final candidates =
+        _filterMerchantCandidates(topLines.isEmpty ? lines : topLines);
     if (candidates.isEmpty) {
       return lines.isNotEmpty ? _normalizeMerchant(lines.first.text) : '';
     }
-    final candidate = _pickBestMerchant(candidates);
-    return _normalizeKnownMerchant(candidate);
+    final known = _findKnownMerchant(candidates);
+    if (known != null) return known;
+    return _normalizeKnownMerchant(_normalizeMerchant(candidates.first.text));
   }
 
   String _normalizeMerchant(String value) {
     return value.replaceAll(RegExp(r'\s{2,}'), ' ').trim();
   }
 
-  List<String> _filterMerchantCandidates(List<_OcrLine> lines) {
+  List<_OcrLine> _filterMerchantCandidates(List<_OcrLine> lines) {
     return lines
         .where((line) {
           final text = line.text;
@@ -4578,7 +4580,6 @@ class OcrService {
           }
           return RegExp(r'[A-Za-z]').hasMatch(text);
         })
-        .map((line) => line.text)
         .toList();
   }
 
@@ -4678,7 +4679,9 @@ class OcrService {
       final timeMatch =
           RegExp(r'\b(\d{1,2}:\d{2}(?::\d{2})?)\b').firstMatch(line.text);
       if (timeMatch != null && foundTime == null) {
-        foundTime = timeMatch.group(1);
+        final timeValue = timeMatch.group(1) ?? '';
+        final meridiem = _extractMeridiem(line.text);
+        foundTime = meridiem == null ? timeValue : '$timeValue $meridiem';
       }
       if (foundDate != null) {
         final formatted = _formatDateTime(foundDate!, foundTime);
@@ -4768,13 +4771,13 @@ class OcrService {
         lower.contains(' ste ');
   }
 
-  String _pickBestMerchant(List<String> lines) {
+  String _pickBestMerchant(List<_OcrLine> lines) {
     if (lines.isEmpty) return '';
     final scored = lines.map((line) {
-      final letters = RegExp(r'[A-Za-z]').allMatches(line).length;
-      final digits = RegExp(r'\d').allMatches(line).length;
+      final letters = RegExp(r'[A-Za-z]').allMatches(line.text).length;
+      final digits = RegExp(r'\d').allMatches(line.text).length;
       final score = letters - digits;
-      return MapEntry(line, score);
+      return MapEntry(line.text, score);
     }).toList();
     scored.sort((a, b) => b.value.compareTo(a.value));
     return _normalizeMerchant(scored.first.key);
@@ -4890,11 +4893,29 @@ class OcrService {
     }
     var hour = int.tryParse(timeMatch.group(1) ?? '') ?? 0;
     final minute = timeMatch.group(2) ?? '00';
-    final isPm = hour >= 12;
+    final meridiem = _extractMeridiem(timePart);
+    final isPm = meridiem == null ? hour >= 12 : meridiem == 'PM';
     hour = hour % 12;
     if (hour == 0) hour = 12;
     final suffix = isPm ? 'PM' : 'AM';
     return '${months[month - 1]} $day, $year • $hour:$minute $suffix';
+  }
+
+  String? _extractMeridiem(String text) {
+    final match =
+        RegExp(r'\b(AM|PM)\b', caseSensitive: false).firstMatch(text);
+    if (match == null) return null;
+    return match.group(1)?.toUpperCase();
+  }
+
+  String? _findKnownMerchant(List<_OcrLine> lines) {
+    for (final line in lines) {
+      final normalized = _normalizeKnownMerchant(_normalizeMerchant(line.text));
+      if (normalized.toLowerCase() != line.text.toLowerCase()) {
+        return normalized;
+      }
+    }
+    return null;
   }
 
   int _monthIndexFromName(String name) {
