@@ -809,129 +809,216 @@ class _PaywallFeatureRow extends StatelessWidget {
   }
 }
 
-class _ReceiptCard extends StatelessWidget {
+class _ReceiptCard extends StatefulWidget {
   final Receipt receipt;
-  final VoidCallback? onTap;
-  final VoidCallback? onAction;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
 
   const _ReceiptCard({
     required this.receipt,
-    this.onTap,
-    this.onAction,
+    required this.onEdit,
+    required this.onDelete,
   });
 
   @override
+  State<_ReceiptCard> createState() => _ReceiptCardState();
+}
+
+class _ReceiptCardState extends State<_ReceiptCard> {
+  bool _expanded = false;
+
+  @override
   Widget build(BuildContext context) {
-    final dateText = _receiptDateLabel(receipt);
+    final receipt = widget.receipt;
+    final split = _splitDateTime(receipt.purchaseDate);
+    final dateText = (split['date'] ?? '').isEmpty
+        ? _receiptDateLabel(receipt)
+        : split['date'] ?? '';
+    final timeText = split['time'] ?? '';
     final amountText = _formatCents(receipt.totalCents);
+    final savedAt = DateTime.tryParse(receipt.createdAt);
     final hasImage =
         receipt.imagePath.isNotEmpty && File(receipt.imagePath).existsSync();
+    final noteText = receipt.note.trim();
+    final hasNote = noteText.isNotEmpty;
 
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFE6E6E6)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: Container(
-                width: 64,
-                height: 64,
-                color: const Color(0xFFE7EFEA),
-                child: hasImage
-                    ? Image.file(
-                        File(receipt.imagePath),
-                        fit: BoxFit.cover,
-                      )
-                    : const Icon(
-                        Icons.receipt_long,
-                        color: _headerGreen,
-                        size: 30,
-                      ),
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    receipt.merchant.isEmpty
-                        ? 'Untitled receipt'
-                        : receipt.merchant,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: _darkText,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE8E8E8),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      receipt.category.isEmpty ? 'Other' : receipt.category,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF5F5F5F),
-                        fontWeight: FontWeight.w600,
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE6E6E6)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          InkWell(
+            onTap: () {
+              setState(() {
+                _expanded = !_expanded;
+              });
+            },
+            borderRadius: BorderRadius.circular(12),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        width: 64,
+                        height: 64,
+                        color: const Color(0xFFE7EFEA),
+                        child: hasImage
+                            ? Image.file(
+                                File(receipt.imagePath),
+                                fit: BoxFit.cover,
+                              )
+                            : const Icon(
+                                Icons.receipt_long,
+                                color: _headerGreen,
+                                size: 30,
+                              ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    dateText.isEmpty ? 'Date not set' : dateText,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: _mutedText,
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            receipt.merchant.isEmpty
+                                ? 'Untitled receipt'
+                                : receipt.merchant,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: _darkText,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE8E8E8),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              receipt.category.isEmpty
+                                  ? 'Other'
+                                  : receipt.category,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF5F5F5F),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            dateText.isEmpty ? 'Date not set' : dateText,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: _mutedText,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            SizedBox(
-              width: 96,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    amountText,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF45A146),
-                    ),
-                  ),
-                  if (onAction != null) ...[
-                    const SizedBox(height: 6),
-                    _IconButton(
-                      icon: Icons.more_vert,
-                      onTap: onAction!,
-                      iconColor: _mutedText,
+                    const SizedBox(width: 12),
+                    SizedBox(
+                      width: 96,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            amountText,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF45A146),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Icon(
+                            _expanded
+                                ? Icons.keyboard_arrow_up
+                                : Icons.keyboard_arrow_down,
+                            color: _mutedText,
+                          ),
+                        ],
+                      ),
                     ),
                   ],
+                ),
+                if (hasNote) ...[
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      noteText,
+                      maxLines: _expanded ? null : 2,
+                      overflow:
+                          _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: _darkText,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (_expanded) ...[
+            const SizedBox(height: 12),
+            const Divider(height: 1, color: Color(0xFFE6E6E6)),
+            const SizedBox(height: 12),
+            _DetailRow(
+              label: 'Purchase time',
+                value: timeText.isEmpty ? 'Not set' : timeText,
+              ),
+              _DetailRow(
+                label: 'Saved',
+                value: savedAt == null ? 'Unknown' : _formatDate(savedAt),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: widget.onEdit,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: _headerGreen,
+                        side: const BorderSide(color: Color(0xFFDCE8E1)),
+                      ),
+                      child: const Text('Edit'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: widget.onDelete,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.redAccent,
+                        side: const BorderSide(color: Color(0xFFF1D6D9)),
+                      ),
+                      child: const Text('Delete'),
+                    ),
+                  ),
                 ],
               ),
-            ),
-          ],
-        ),
+            ],
+        ],
       ),
     );
   }
@@ -1457,7 +1544,8 @@ class _ReceiptsHubPageState extends State<ReceiptsHubPage> {
                           padding: const EdgeInsets.only(bottom: 12),
                           child: _ReceiptCard(
                             receipt: receipt,
-                            onTap: () => _openReceiptDetail(receipt),
+                            onEdit: () => _openEditReceipt(receipt),
+                            onDelete: () => _confirmDeleteReceipt(receipt),
                           ),
                         );
                       },
@@ -1514,15 +1602,48 @@ class _ReceiptsHubPageState extends State<ReceiptsHubPage> {
     }
   }
 
-  Future<void> _openReceiptDetail(Receipt receipt) async {
+  Future<void> _openEditReceipt(Receipt receipt) async {
     final updated = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => ReceiptDetailPage(receipt: receipt),
+        builder: (_) => EditReceiptPage(receipt: receipt),
       ),
     );
     if (updated == true && mounted) {
       _loadReceipts();
     }
+  }
+
+  Future<void> _confirmDeleteReceipt(Receipt receipt) async {
+    final id = receipt.id;
+    if (id == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete receipt?'),
+        content: const Text('This will remove the receipt permanently.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _database.deleteReceipt(id);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Receipt deleted.')),
+    );
+    _loadReceipts();
   }
 
   Future<void> _openPaywall() async {
