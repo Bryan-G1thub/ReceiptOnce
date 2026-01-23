@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
@@ -3635,6 +3636,28 @@ class _ReceiptEditorPageState extends State<ReceiptEditorPage> {
                     ),
                   ),
                 ),
+                if (widget.draft.rawText.trim().isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: () async {
+                        await Clipboard.setData(
+                          ClipboardData(text: widget.draft.rawText),
+                        );
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('OCR text copied.')),
+                        );
+                      },
+                      icon: const Icon(Icons.copy, size: 16),
+                      label: const Text('Copy OCR'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: _mutedText,
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 16),
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -4542,15 +4565,20 @@ class OcrService {
   }
 
   String _guessMerchant(List<_OcrLine> lines) {
-    final topLines = lines.where((line) => line.positionRatio <= 0.15).toList();
-    final candidates =
-        _filterMerchantCandidates(topLines.isEmpty ? lines : topLines);
+    final topLines = lines.where((line) => line.positionRatio <= 0.2).toList();
+    final candidates = _filterMerchantCandidates(
+      topLines.isNotEmpty ? topLines : lines,
+    );
+    final known = _findKnownMerchant(lines);
+    if (known != null) return known;
+    final fromDomain = _merchantFromDomain(lines);
+    if (fromDomain != null) return fromDomain;
     if (candidates.isEmpty) {
       return lines.isNotEmpty ? _normalizeMerchant(lines.first.text) : '';
     }
-    final known = _findKnownMerchant(candidates);
-    if (known != null) return known;
-    return _normalizeKnownMerchant(_normalizeMerchant(candidates.first.text));
+    return _normalizeKnownMerchant(
+      _normalizeMerchant(_pickBestMerchantLine(candidates)),
+    );
   }
 
   String _normalizeMerchant(String value) {
@@ -4560,6 +4588,7 @@ class OcrService {
   List<_OcrLine> _filterMerchantCandidates(List<_OcrLine> lines) {
     return lines
         .where((line) {
+          if (line.positionRatio > 0.25) return false;
           final text = line.text;
           if (_isLikelyTimestamp(text)) return false;
           if (_isMostlyNumbers(text)) return false;
@@ -4570,7 +4599,27 @@ class OcrService {
           if (upper.contains('RECEIPT') ||
               upper.contains('STORE') ||
               upper.contains('CASHIER') ||
-              upper.contains('TERMINAL')) {
+              upper.contains('TERMINAL') ||
+              upper.contains('DEBIT') ||
+              upper.contains('CREDIT') ||
+              upper.contains('CARD') ||
+              upper.contains('TEND') ||
+              upper.contains('SAVINGS') ||
+              upper.contains('PAYMENTS') ||
+              upper.contains('COUPONS') ||
+              upper.contains('APPROVAL') ||
+              upper.contains('TAX') ||
+              upper.contains('WELCOME') ||
+              upper.contains('TABLE') ||
+              upper.contains('FEEDBACK') ||
+              upper.contains('SURVEY') ||
+              upper.contains('THANK') ||
+              upper.contains('ID#') ||
+              upper.contains('ID #') ||
+              upper.contains('LOW PRICES') ||
+              upper.contains('GET MORE DONE') ||
+              upper.contains('DID WE NAIL IT') ||
+              upper.contains('SALE')) {
             return false;
           }
           if (upper.contains('TOTAL') ||
@@ -4593,6 +4642,7 @@ class OcrService {
     ];
     final keywordLineIndexes = <int>{};
     final candidates = <_AmountCandidate>[];
+    final candidateText = <int, String>{};
     for (final line in lines) {
       final upper = line.text.toUpperCase();
       if (keywords.any((keyword) => upper.contains(keyword))) {
@@ -4602,6 +4652,7 @@ class OcrService {
       if (amounts.isNotEmpty) {
         for (final value in amounts) {
           candidates.add(_AmountCandidate(value: value, lineIndex: line.index));
+          candidateText[line.index] = line.text;
         }
       }
     }
@@ -4611,14 +4662,34 @@ class OcrService {
     final bottomStart = (totalLines * 0.7).floor();
     final inBottom = candidates.where((c) => c.lineIndex >= bottomStart).toList();
     final withKeyword = candidates.where((c) {
-      return keywordLineIndexes.any((idx) => (idx - c.lineIndex).abs() <= 2);
+      return keywordLineIndexes.any((idx) => (idx - c.lineIndex).abs() <= 1);
     }).toList();
     final bottomWithKeyword = inBottom.where((c) {
-      return keywordLineIndexes.any((idx) => (idx - c.lineIndex).abs() <= 2);
+      return keywordLineIndexes.any((idx) => (idx - c.lineIndex).abs() <= 1);
+    }).toList();
+
+    final strongTotals = candidates.where((c) {
+      final text = (candidateText[c.lineIndex] ?? '').toUpperCase();
+      if (!text.contains('TOTAL')) return false;
+      if (text.contains('SUBTOTAL') ||
+          text.contains('SAVINGS') ||
+          text.contains('TAX') ||
+          text.contains('BAL') ||
+          text.contains('BEGIN') ||
+          text.contains('END') ||
+          text.contains('ACCOUNT') ||
+          text.contains('TEND') ||
+          text.contains('CHANGE') ||
+          text.contains('DEBIT') ||
+          text.contains('CREDIT')) {
+        return false;
+      }
+      return true;
     }).toList();
 
     double? bestMatch;
-    bestMatch = _pickLargestAmount(bottomWithKeyword);
+    bestMatch = _pickLargestAmount(strongTotals);
+    bestMatch ??= _pickLargestAmount(bottomWithKeyword);
     bestMatch ??= _pickLargestAmount(inBottom);
     bestMatch ??= _pickLargestAmount(withKeyword);
     bestMatch ??= _pickLargestAmount(candidates);
@@ -4644,21 +4715,34 @@ class OcrService {
         lines.where((line) => line.positionRatio <= 0.2).toList();
     final topResult = _scanForDate(topLines);
     if (topResult.isNotEmpty) return topResult;
+    final bottomResult = _scanForDateFromBottom(lines);
+    if (bottomResult.isNotEmpty) return bottomResult;
     return _scanForDate(lines);
+  }
+
+  String _scanForDateFromBottom(List<_OcrLine> lines) {
+    if (lines.isEmpty) return '';
+    final start = (lines.length * 0.7).floor();
+    final tail = lines.sublist(start);
+    return _scanForDate(tail);
   }
 
   String _scanForDate(List<_OcrLine> lines) {
     String? foundDate;
     String? foundTime;
     for (final line in lines) {
+      final upper = line.text.toUpperCase();
+      if (upper.contains('SINCE') || upper.contains('SAVINGS')) {
+        continue;
+      }
       final dateMatch =
           RegExp(r'(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})').firstMatch(line.text);
       final monthNameMatch = RegExp(
-        r'\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\s+(\d{1,2})(?:,)?\s+(\d{2,4})\b',
+        r'\b(January|February|March|April|May|June|July|August|September|Sept|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2})(?:,)?\s+(\d{2,4})\b',
         caseSensitive: false,
       ).firstMatch(line.text);
       final dayMonthNameMatch = RegExp(
-        r'\b(\d{1,2})[ -/](Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*[ -/](\d{2,4})\b',
+        r'\b(\d{1,2})[ -/](January|February|March|April|May|June|July|August|September|Sept|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[ -/](\d{2,4})\b',
         caseSensitive: false,
       ).firstMatch(line.text);
       if (foundDate == null) {
@@ -4684,11 +4768,34 @@ class OcrService {
         foundTime = meridiem == null ? timeValue : '$timeValue $meridiem';
       }
       if (foundDate != null) {
+        foundTime ??= _findNearbyTime(lines, line.index);
         final formatted = _formatDateTime(foundDate!, foundTime);
         if (formatted.isNotEmpty) return formatted;
       }
     }
     return foundDate == null ? '' : _formatDateTime(foundDate!, foundTime);
+  }
+
+  String? _findNearbyTime(List<_OcrLine> lines, int dateLineIndex) {
+    final matches = <_OcrLine>[];
+    for (final line in lines) {
+      if ((line.index - dateLineIndex).abs() <= 2) {
+        matches.add(line);
+      }
+    }
+    if (matches.isEmpty && lines.isNotEmpty) {
+      matches.add(lines.first);
+    }
+    for (final candidate in matches) {
+      final timeMatch =
+          RegExp(r'\b(\d{1,2}:\d{2}(?::\d{2})?)\b').firstMatch(candidate.text);
+      if (timeMatch != null) {
+        final timeValue = timeMatch.group(1) ?? '';
+        final meridiem = _extractMeridiem(candidate.text);
+        return meridiem == null ? timeValue : '$timeValue $meridiem';
+      }
+    }
+    return null;
   }
 
   String _guessCategory(String merchant) {
@@ -4744,7 +4851,7 @@ class OcrService {
   bool _containsDate(String line) {
     final numeric = RegExp(r'\d{1,2}[/-]\d{1,2}[/-]\d{2,4}').hasMatch(line);
     final monthName = RegExp(
-      r'\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\b',
+      r'\b(January|February|March|April|May|June|July|August|September|Sept|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b',
       caseSensitive: false,
     ).hasMatch(line);
     return numeric || monthName;
@@ -4771,16 +4878,42 @@ class OcrService {
         lower.contains(' ste ');
   }
 
-  String _pickBestMerchant(List<_OcrLine> lines) {
+  String _pickBestMerchantLine(List<_OcrLine> lines) {
     if (lines.isEmpty) return '';
     final scored = lines.map((line) {
-      final letters = RegExp(r'[A-Za-z]').allMatches(line.text).length;
-      final digits = RegExp(r'\d').allMatches(line.text).length;
-      final score = letters - digits;
-      return MapEntry(line.text, score);
+      final text = line.text;
+      final letters = RegExp(r'[A-Za-z]').allMatches(text).length;
+      final digits = RegExp(r'\d').allMatches(text).length;
+      final words = text.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+      final upper = text.toUpperCase();
+      var score = letters * 2 - digits * 2;
+      score += ((1 - line.positionRatio) * 18).round();
+      score += text.length >= 4 ? 6 : -8;
+      if (words.length <= 2) score += 2;
+      if (upper.contains('RECEIPT') ||
+          upper.contains('TABLE') ||
+          upper.contains('TOTAL') ||
+          upper.contains('SUBTOTAL') ||
+          upper.contains('VAT') ||
+          upper.contains('TIP') ||
+          upper.contains('SURVEY') ||
+          upper.contains('FEEDBACK') ||
+          upper.contains('THANK') ||
+          upper.contains('APPROVAL') ||
+          upper.contains('COUPON') ||
+          upper.contains('CHANGE') ||
+          upper.contains('CASH') ||
+          upper.contains('CARD') ||
+          upper.contains('ACCOUNT') ||
+          upper.contains('GET MORE DONE') ||
+          upper.contains('DID WE NAIL IT')) {
+        score -= 10;
+      }
+      if (words.length >= 3) score -= 3;
+      return MapEntry(text, score);
     }).toList();
     scored.sort((a, b) => b.value.compareTo(a.value));
-    return _normalizeMerchant(scored.first.key);
+    return scored.first.key;
   }
 
   String _normalizeKnownMerchant(String merchant) {
@@ -4793,6 +4926,10 @@ class OcrService {
       'COSTCO': 'Costco',
       'STARBUCKS': 'Starbucks',
       'WHOLEFOODS': 'Whole Foods Market',
+      'MEIJER': 'Meijer',
+      'MEIJERCOM': 'Meijer',
+      'MEIJERSAVINGS': 'Meijer',
+      'PCMARKETOFCHOICE': 'PC Market of Choice',
     };
     for (final entry in known.entries) {
       if (_isSimilar(normalized, entry.key)) {
@@ -4845,11 +4982,11 @@ class OcrService {
       year = int.tryParse(numericMatch.group(3) ?? '') ?? 0;
     } else {
       final monthNameMatch = RegExp(
-        r'\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\s+(\d{1,2})(?:,)?\s+(\d{2,4})\b',
+        r'\b(January|February|March|April|May|June|July|August|September|Sept|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2})(?:,)?\s+(\d{2,4})\b',
         caseSensitive: false,
       ).firstMatch(datePart);
       final dayMonthNameMatch = RegExp(
-        r'\b(\d{1,2})[ -/](Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*[ -/](\d{2,4})\b',
+        r'\b(\d{1,2})[ -/](January|February|March|April|May|June|July|August|September|Sept|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[ -/](\d{2,4})\b',
         caseSensitive: false,
       ).firstMatch(datePart);
       if (monthNameMatch != null) {
@@ -4918,8 +5055,33 @@ class OcrService {
     return null;
   }
 
+  String? _merchantFromDomain(List<_OcrLine> lines) {
+    for (final line in lines) {
+      final lower = line.text.toLowerCase();
+      final match = RegExp(r'([a-z0-9-]+)\.com').firstMatch(lower);
+      if (match == null) continue;
+      final domain = match.group(1) ?? '';
+      if (domain.isEmpty) continue;
+      if (domain.contains('walmart')) return 'Walmart';
+      if (domain.contains('target')) return 'Target';
+      if (domain.contains('homedepot')) return 'Home Depot';
+      if (domain.contains('costco')) return 'Costco';
+      if (domain.contains('meijer')) return 'Meijer';
+      final cleaned = domain.replaceAll(RegExp(r'[^a-z0-9]'), ' ');
+      final words = cleaned
+          .split(RegExp(r'\s+'))
+          .where((w) => w.isNotEmpty)
+          .map((w) => w[0].toUpperCase() + w.substring(1))
+          .toList();
+      if (words.isEmpty) return null;
+      return words.join(' ');
+    }
+    return null;
+  }
+
   int _monthIndexFromName(String name) {
-    final upper = name.trim().toUpperCase();
+    final upper = name.trim().toUpperCase().replaceAll(RegExp(r'[^A-Z]'), '');
+    final short = upper.length >= 3 ? upper.substring(0, 3) : upper;
     const map = {
       'JAN': 1,
       'FEB': 2,
@@ -4935,7 +5097,7 @@ class OcrService {
       'NOV': 11,
       'DEC': 12,
     };
-    return map[upper] ?? 0;
+    return map[short] ?? map[upper] ?? 0;
   }
 
   double? _pickLargestAmount(List<_AmountCandidate> candidates) {
