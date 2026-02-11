@@ -41,7 +41,7 @@ class ReceiptOnceApp extends StatelessWidget {
   }
 }
 
-const Color _headerGreen = Color(0xFF1F8A5B);
+const Color _headerGreen = Color(0xFF2AAD8A);
 const Color _lightBackground = Color(0xFFF4F5F7);
 const Color _darkText = Color(0xFF232323);
 const Color _mutedText = Color(0xFF7B7B7B);
@@ -567,7 +567,7 @@ class _SummaryCard extends StatelessWidget {
                 child: _MetricTile(
                   icon: Icons.trending_up,
                   label: 'Top',
-                  value: topCategory.isEmpty ? 'Other' : topCategory,
+                  value: _truncateCategory(topCategory),
                 ),
               ),
             ],
@@ -1059,9 +1059,7 @@ class _ReceiptCardState extends State<_ReceiptCard> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
-                              receipt.category.isEmpty
-                                  ? 'Other'
-                                  : receipt.category,
+                              _truncateCategory(receipt.category),
                               style: const TextStyle(
                                 fontSize: 12,
                                 color: Color(0xFF5F5F5F),
@@ -1294,7 +1292,7 @@ class _ReceiptListItem extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    item.category,
+                    _truncateCategory(item.category),
                     style: const TextStyle(
                       fontSize: 12,
                       color: Color(0xFF5F5F5F),
@@ -1405,7 +1403,7 @@ class _ReceiptDataListItem extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    receipt.category.isEmpty ? 'Other' : receipt.category,
+                    _truncateCategory(receipt.category),
                     style: const TextStyle(
                       fontSize: 12,
                       color: Color(0xFF5F5F5F),
@@ -1951,7 +1949,7 @@ class _ReceiptDetailPageState extends State<ReceiptDetailPage> {
                     const SizedBox(height: 12),
                     _DetailRow(
                       label: 'Category',
-                      value: receipt.category.isEmpty ? 'Other' : receipt.category,
+                      value: _truncateCategory(receipt.category, maxLength: 20),
                     ),
                     _DetailRow(
                       label: 'Purchase date',
@@ -2308,6 +2306,7 @@ class _EditReceiptPageState extends State<EditReceiptPage> {
                   controller: _categoryController,
                   icon: Icons.sell_outlined,
                   iconColor: _headerGreen,
+                  maxLength: 20,
                 ),
                 const SizedBox(height: 16),
                 _InputField(
@@ -3854,6 +3853,7 @@ class _ReceiptEditorPageState extends State<ReceiptEditorPage> {
                   label: 'Category',
                   controller: _categoryController,
                   icon: Icons.sell_outlined,
+                  maxLength: 20,
                 ),
                 const SizedBox(height: 12),
                 _InputField(
@@ -4135,6 +4135,7 @@ class _ManualEntryPageState extends State<ManualEntryPage> {
                   label: 'Category',
                   controller: _categoryController,
                   icon: Icons.sell_outlined,
+                  maxLength: 20,
                 ),
                 const SizedBox(height: 12),
                 _InputField(
@@ -4253,6 +4254,7 @@ class _InputField extends StatelessWidget {
   final VoidCallback? onTap;
   final bool readOnly;
   final int maxLines;
+  final int? maxLength;
 
   const _InputField({
     required this.label,
@@ -4263,6 +4265,7 @@ class _InputField extends StatelessWidget {
     this.onTap,
     this.readOnly = false,
     this.maxLines = 1,
+    this.maxLength,
   });
 
   @override
@@ -4285,6 +4288,7 @@ class _InputField extends StatelessWidget {
           readOnly: readOnly,
           onTap: onTap,
           maxLines: maxLines,
+          maxLength: maxLength,
           style: const TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w600,
@@ -4293,6 +4297,7 @@ class _InputField extends StatelessWidget {
           decoration: InputDecoration(
             filled: true,
             fillColor: const Color(0xFFF1F1F1),
+            counterText: maxLength != null ? '' : null,
             prefixIcon: icon == null
                 ? null
                 : Icon(
@@ -4544,6 +4549,12 @@ String _formatTimeOfDay(BuildContext context, TimeOfDay time) {
 String _csvValue(String value) {
   final escaped = value.replaceAll('"', '""');
   return '"$escaped"';
+}
+
+String _truncateCategory(String category, {int maxLength = 14}) {
+  final display = category.isEmpty ? 'Other' : category;
+  if (display.length <= maxLength) return display;
+  return '${display.substring(0, maxLength - 1)}…';
 }
 
 String _topCategoryFromReceipts(List<Receipt> receipts) {
