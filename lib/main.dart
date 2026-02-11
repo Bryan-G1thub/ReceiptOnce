@@ -2578,118 +2578,257 @@ class _PaywallPageState extends State<PaywallPage> {
 
   @override
   Widget build(BuildContext context) {
-    final priceLabel =
-        _product == null ? 'Unlock lifetime access' : 'Unlock for ${_product!.price}';
+    final priceDisplay = _product?.price ?? '\$4.99';
     return Scaffold(
-      backgroundColor: _lightBackground,
+      backgroundColor: _headerGreen,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _PageHeader(
-                title: 'ReceiptOnce Pro',
-                onBack: () => Navigator.of(context).pop(),
+        child: Column(
+          children: [
+            // Top bar with back button
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 20, 0),
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back, color: Colors.white),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                  const Spacer(),
+                ],
               ),
-              const SizedBox(height: 20),
-              Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: const Color(0xFFE5E5E5)),
-                ),
+            ),
+            // Main content
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 28),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text(
-                      'Unlock unlimited scans',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        color: _darkText,
+                  children: [
+                    const SizedBox(height: 24),
+                    // Price tag
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 28,
+                        vertical: 16,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.15),
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: _headerGreen.withOpacity(0.12),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.local_offer,
+                              color: _headerGreen,
+                              size: 28,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Lifetime Access',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                  color: _mutedText,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                priceDisplay,
+                                style: const TextStyle(
+                                  fontSize: 32,
+                                  fontWeight: FontWeight.w800,
+                                  color: _darkText,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
-                    SizedBox(height: 8),
-                    Text(
+                    const SizedBox(height: 40),
+                    // Title
+                    const Text(
+                      'ReceiptOnce Pro',
+                      style: TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
                       'Keep every receipt in one place and export whenever tax season arrives.',
-                      style: TextStyle(color: _mutedText),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.white70,
+                        height: 1.4,
+                      ),
                     ),
-                    SizedBox(height: 16),
-                    _PaywallFeatureRow(
-                      icon: Icons.all_inclusive,
-                      text: 'Unlimited receipt scans',
+                    const SizedBox(height: 40),
+                    // Features
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.25),
+                        ),
+                      ),
+                      child: Column(
+                        children: const [
+                          _PaywallFeatureRowDark(
+                            icon: Icons.all_inclusive,
+                            text: 'Unlimited receipt scans',
+                          ),
+                          SizedBox(height: 16),
+                          _PaywallFeatureRowDark(
+                            icon: Icons.cloud_download_outlined,
+                            text: 'Export CSV anytime',
+                          ),
+                          SizedBox(height: 16),
+                          _PaywallFeatureRowDark(
+                            icon: Icons.lock_open_outlined,
+                            text: 'One-time purchase, no subscriptions',
+                          ),
+                        ],
+                      ),
                     ),
-                    SizedBox(height: 10),
-                    _PaywallFeatureRow(
-                      icon: Icons.cloud_download_outlined,
-                      text: 'Export CSV anytime',
+                    const Spacer(),
+                    // Loading indicator
+                    if (_loadingProduct)
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 16),
+                        child: LinearProgressIndicator(
+                          color: Colors.white,
+                          backgroundColor: Colors.white24,
+                        ),
+                      ),
+                    // Error message
+                    if (_storeError != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: Text(
+                          _storeError!,
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                      ),
+                    // Purchase button
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _processing || !_storeAvailable
+                            ? null
+                            : _startPurchase,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: _headerGreen,
+                          disabledBackgroundColor: Colors.white54,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: _processing
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  color: _headerGreen,
+                                ),
+                              )
+                            : const Text(
+                                'Unlock Pro',
+                                style: TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                      ),
                     ),
-                    SizedBox(height: 10),
-                    _PaywallFeatureRow(
-                      icon: Icons.analytics_outlined,
-                      text: 'Full summaries and insights',
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Pay once, own forever',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 13,
+                      ),
                     ),
+                    const SizedBox(height: 12),
+                    // TODO: Remove after testing
+                    TextButton(
+                      onPressed: () async {
+                        await ReceiptDatabase.instance.resetScanCount();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('DEV: 10 free scans restored')),
+                          );
+                          Navigator.of(context).pop();
+                        }
+                      },
+                      child: const Text(
+                        'DEV: Reset scans',
+                        style: TextStyle(color: Colors.white38, fontSize: 11),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                   ],
                 ),
               ),
-              if (_loadingProduct)
-                const Padding(
-                  padding: EdgeInsets.only(top: 12),
-                  child: LinearProgressIndicator(
-                    color: _headerGreen,
-                    backgroundColor: Color(0xFFE9E9E9),
-                  ),
-                ),
-              if (_storeError != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: Text(
-                    _storeError!,
-                    style: const TextStyle(color: _mutedText),
-                  ),
-                ),
-              const Spacer(),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _processing || !_storeAvailable
-                      ? null
-                      : _startPurchase,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _headerGreen,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  child: _processing
-                      ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            color: Colors.white,
-                          ),
-                        )
-                      : Text(
-                          priceLabel,
-                          style: const TextStyle(color: Colors.white),
-                        ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              const Center(
-                child: Text(
-                  'One-time purchase • No subscriptions',
-                  style: TextStyle(color: _mutedText),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
+    );
+  }
+}
+
+class _PaywallFeatureRowDark extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _PaywallFeatureRowDark({
+    required this.icon,
+    required this.text,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, color: Colors.white, size: 22),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

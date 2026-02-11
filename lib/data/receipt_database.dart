@@ -216,4 +216,14 @@ class ReceiptDatabase {
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
+
+  // TODO: Remove after testing
+  Future<void> resetScanCount() async {
+    final db = await database;
+    await db.insert(
+      'app_settings',
+      {'key': 'scan_count', 'value': '0'},
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
 }
