@@ -3774,28 +3774,6 @@ class _ReceiptEditorPageState extends State<ReceiptEditorPage> {
                     ),
                   ),
                 ),
-                if (widget.draft.rawText.trim().isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton.icon(
-                      onPressed: () async {
-                        await Clipboard.setData(
-                          ClipboardData(text: widget.draft.rawText),
-                        );
-                        if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('OCR text copied.')),
-                        );
-                      },
-                      icon: const Icon(Icons.copy, size: 16),
-                      label: const Text('Copy OCR'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: _mutedText,
-                      ),
-                    ),
-                  ),
-                ],
                 const SizedBox(height: 16),
                 Container(
                   padding: const EdgeInsets.all(12),
