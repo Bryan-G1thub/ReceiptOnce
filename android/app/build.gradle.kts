@@ -14,7 +14,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.receiptonce"
+    namespace = "com.receiptonce.app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
     
@@ -28,7 +28,7 @@ android {
     }
     
     defaultConfig {
-        applicationId = "com.example.receiptonce"
+        applicationId = "com.receiptonce.app"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

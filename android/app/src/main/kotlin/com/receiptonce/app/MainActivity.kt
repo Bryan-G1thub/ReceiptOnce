@@ -1,4 +1,4 @@
-package com.example.receiptonce
+package com.receiptonce.app
 
 import io.flutter.embedding.android.FlutterActivity
 
