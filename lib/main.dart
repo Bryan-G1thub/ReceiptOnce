@@ -2452,7 +2452,7 @@ class PaywallPage extends StatefulWidget {
 }
 
 class _PaywallPageState extends State<PaywallPage> {
-  static const String _proProductId = 'receiptonce_pro';
+  static const String _proProductId = 'premium_unlock';
   final InAppPurchase _iap = InAppPurchase.instance;
   StreamSubscription<List<PurchaseDetails>>? _purchaseSubscription;
   ProductDetails? _product;
@@ -2573,6 +2573,25 @@ class _PaywallPageState extends State<PaywallPage> {
     });
     final purchaseParam = PurchaseParam(productDetails: _product!);
     await _iap.buyNonConsumable(purchaseParam: purchaseParam);
+  }
+
+  Future<void> _restorePurchases() async {
+    if (_processing) return;
+    setState(() {
+      _processing = true;
+    });
+    try {
+      await _iap.restorePurchases();
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _processing = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not restore purchases. Try again.')),
+        );
+      }
+    }
   }
 
   @override
@@ -2774,6 +2793,19 @@ class _PaywallPageState extends State<PaywallPage> {
                       ),
                     ),
                     const SizedBox(height: 12),
+                    TextButton(
+                      onPressed: _processing ? null : _restorePurchases,
+                      child: const Text(
+                        'Restore Purchases',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          decoration: TextDecoration.underline,
+                          decorationColor: Colors.white70,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     // TODO: Remove after testing
                     TextButton(
                       onPressed: () async {
